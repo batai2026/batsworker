@@ -1,0 +1,17 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+build/
+dist/
+.coverage
+
+# Security-drill run artifacts, rebuilt by scripts/security_drill.py
+.drill-state/
+.drill-tmp/
+
+# Local secrets (live-smoke BYO keys) — never committed
+.env
+.claude/settings.local.json

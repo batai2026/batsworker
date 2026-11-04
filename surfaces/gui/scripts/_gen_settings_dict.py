@@ -1,0 +1,143 @@
+# -*- coding: utf-8 -*-
+"""One-shot generator for src/i18n/zh/settings.ts (settings-area strings)."""
+import io
+
+entries = [
+    ("8 GB recommended", "建议 8 GB 内存"),
+    ("4 CPU cores recommended", "建议 4 核处理器"),
+    ("● Compatible", "● 兼容"),
+    ("● Ready", "● 就绪"),
+    ("● Listening… speak a short phrase, then stop.", "● 正在聆听…说一小段话，然后停止。"),
+    ("A small meter showing how full the model's context window is. Turn it off to show the same thing as a number instead.", "一个显示模型上下文窗口占用情况的小仪表。关闭后会以数字形式显示同样的信息。"),
+    ("Adds an", "在模式选择器中增加一个"),
+    (" option to the mode picker. In that mode, your session model reviews each action that would normally need approval and clears the routine ones; anything doubtful still asks you. It can never allow something the rules block. One extra model call per check, billed to your usage.", "选项。该模式下，会话模型会审查每个通常需要批准的操作并放行常规操作；有疑问的仍会询问你。它绝不能放行规则禁止的操作。每次检查额外消耗一次模型调用，计入你的用量。"),
+    ("Audio is held in memory only while you record and is transcribed locally.", "音频仅在录制期间保存在内存中，并在本地完成转写。"),
+    ("Auto follows your Mac's appearance.", "“自动”跟随你 Mac 的外观设置。"),
+    ("Auto-approve (experimental)", "自动批准（实验性）"),
+    ("Auto-approve", "自动批准"),
+    ("Auto", "自动"),
+    ("Browse", "浏览"),
+    ("Cancel", "取消"),
+    ("Checking compatibility…", "正在检查兼容性…"),
+    ("Check for updates", "检查更新"),
+    ("Checking…", "正在检查…"),
+    ("Claude, GPT and Gemini read PDFs natively — this only applies to models that don't (GLM, Kimi, DeepSeek, local models…). Text extraction is cheapest; page images cost more tokens and need a vision-capable model.", "Claude、GPT 和 Gemini 可原生读取 PDF——此项只影响不支持的模型（GLM、Kimi、DeepSeek、本地模型等）。文本提取最省 token；页面图片消耗更多 token 且需要支持视觉的模型。"),
+    ("Compact at", "达到此比例时压缩"),
+    ("Composer", "输入框"),
+    ("Conversations shown per coworker", "每个协作者显示的会话数"),
+    ("Context optimization", "上下文优化"),
+    ("Context compaction", "上下文压缩"),
+    ("Couldn't check right now — try again later.", "暂时无法检查——请稍后重试。"),
+    ("Coworkers are agents specialized for a particular role or task. They come equipped with the tools and skills to be successful in that role. Enabling a coworker lets you pick it when starting a conversation.", "协作者（Coworker）是针对特定角色或任务特化的 agent，自带完成该角色所需的工具与技能。启用协作者后，你可以在开始对话时选择它。"),
+    ("Coworkers", "协作者"),
+    ("Dark", "深色"),
+    ("Delete the local Whisper model and disable Voice Input?", "删除本地 Whisper 模型并停用语音输入？"),
+    ("Delete", "删除"),
+    ("Download model", "下载模型"),
+    ("Downloading — OpenWorker restarts by itself when it's ready.", "正在下载——就绪后 OpenWorker 会自动重启。"),
+    ("Each conversation gets its own folder under this location. Existing conversations keep their current folder; you can grant access to more folders inside any conversation.", "每个会话都会在此位置下获得自己的文件夹。已有会话保留其当前文件夹；你可以在任意会话内授予更多文件夹的访问权限。"),
+    ("Enable Auto-approve mode", "启用自动批准模式"),
+    ("Extract text", "提取文本"),
+    ("Files", "文件"),
+    ("General", "通用"),
+    ("How OpenWorker looks and behaves on this machine.", "OpenWorker 在这台机器上的外观与行为。"),
+    ("How sessions spend tokens — attachment handling and long-history compaction.", "会话如何消耗 token——附件处理与长历史压缩。"),
+    ("Installed and verified · {size}", "已安装并验证 · {size}"),
+    ("Interface language. Takes effect immediately.", "界面语言，立即生效。"),
+    ("Keep this system awake", "保持系统唤醒"),
+    ("Language", "界面语言"),
+    ("Launch OpenWorker automatically when you sign in.", "登录时自动启动 OpenWorker。"),
+    ("Light", "浅色"),
+    ("Local voice model · {size}", "本地语音模型 · {size}"),
+    ('Longer lists collapse behind "Show more". Applies per coworker and per project.', "更长的列表会折叠到“显示更多”之后。按协作者和项目分别生效。"),
+    ("Long sessions are compacted automatically: older turns are summarized so the coworker keeps working instead of running out of context. Your visible transcript is never changed — a small marker shows where compaction happened.", "长会话会自动压缩：较旧的回合被摘要化，协作者可以继续工作而不会耗尽上下文。你看到的转录内容不会被改动——只会有一个小标记显示压缩发生的位置。"),
+    ("Loading…", "加载中…"),
+    ("Mac", "Mac"),
+    ("Manage your coworkers and add new ones.", "管理你的协作者并添加新的协作者。"),
+    ("Max pages", "最大页数"),
+    ("Max size", "最大体积"),
+    ("Memory", "内存"),
+    ("Microphone test", "麦克风测试"),
+    ("Models", "模型"),
+    ("No speech was detected. Try again and speak for a little longer.", "未检测到语音。请再试一次，并稍微说长一点。"),
+    ("No project command allowances currently declared", "当前未声明任何项目命令许可"),
+    ("No workspaces are trusted.", "尚无受信任的工作区。"),
+    ("On any mode, the reviewer records what it", "在任何模式下，评审员都会记录它在你的选择旁边"),
+    (" have decided next to your own choice — without changing anything. Lets you see how it would behave before trusting it. Also costs one model call per approval.", "会做出什么决定——不改变任何实际行为。让你在信任它之前先观察它的表现。每次批准同样消耗一次模型调用。"),
+    ("Open at login", "登录时自动启动"),
+    ("or at", "或达到"),
+    ("% of the context window", "% 上下文窗口"),
+    ("PDFs over these limits are not attached — you'll see a notice in the composer instead.", "超过这些限制的 PDF 不会随消息附加——你会在输入框中看到一条提示。"),
+    ("PDF attachments travel with every turn of a conversation, so large documents multiply what you spend on tokens.", "PDF 附件会随对话的每一回合重复发送，因此大文档会成倍增加 token 消耗。"),
+    ("PDFs on models without native PDF support", "对不支持原生 PDF 的模型处理 PDF"),
+    ("Pick a folder", "选择文件夹"),
+    ("Prevent idle sleep so scheduled tasks fire on time.", "防止空闲休眠，确保计划任务按时触发。"),
+    ("Private by design.", "隐私优先。"),
+    ("Processor", "处理器"),
+    ("Providers and the models offered in the composer's picker. Keys are stored only on this computer.", "提供商与输入框选择器中提供的模型。密钥只保存在这台电脑上。"),
+    ("Replays the first-run setup: model, first automation, tips.", "重放首次运行设置：模型、第一个自动化、使用提示。"),
+    ("Revoke command trust for {path}?", "撤销 {path} 的命令信任？"),
+    ("Revoke", "撤销"),
+    ("Run setup again", "重新运行设置"),
+    ("Saved. New conversations will use this location.", "已保存。新会话将使用此位置。"),
+    ("Send page images", "发送页面图片"),
+    ("Session's own model (default)", "会话当前模型（默认）"),
+    ("Settings", "设置"),
+    ("Shadow evaluation", "影子评估"),
+    ("(for measuring)", "（用于测量）"),
+    ("Setup & updates", "设置与更新"),
+    ("Show the context window bar", "显示上下文窗口进度条"),
+    ("Sidebar", "侧边栏"),
+    ("Speak naturally in the composer. Recordings and transcripts stay on this device.", "在输入框中自然说话。录音与转写文本只保留在这台设备上。"),
+    ("Stop and check", "停止并检查"),
+    ("Summarizer model", "摘要模型"),
+    ("Test again", "再次测试"),
+    ("Test microphone", "测试麦克风"),
+    ("The cap makes very-large-context models compact early — quality and speed degrade well before their nominal limit.", "该上限让超大上下文模型提前压缩——在名义上限之前，质量与速度就会明显下降。"),
+    ("The summary is written by this model. The default follows whatever model the session is using.", "摘要由此模型生成。默认跟随会话当前使用的模型。"),
+    ("This device", "本机"),
+    ("Theme", "主题"),
+    ("Token savings", "Token 节省"),
+    ("tokens, whichever is smaller", "token，以较小者为准"),
+    ("Transcribing…", "正在转写…"),
+    ("Trusted projects may manage their command allowances in .coworker/config.toml.", "受信任的项目可以在 .coworker/config.toml 中管理自己的命令许可。"),
+    ("Trusted workspaces", "受信任的工作区"),
+    ("Unsupported", "不支持"),
+    ("Update to v{version} and restart", "更新到 v{version} 并重启"),
+    ("Verifying…", "正在验证…"),
+    ("Verified", "已验证"),
+    ("Voice input", "语音输入"),
+    ("Voice Input setup is available in the OpenWorker desktop app.", "语音输入设置仅在 OpenWorker 桌面应用中可用。"),
+    ("Windows", "Windows"),
+    ("would", "本来"),
+    ("You're on the latest version.", "你已是最新版本。"),
+    ("{n} project command allowances", "{n} 项项目命令许可"),
+    ("· Folder unavailable", "· 文件夹不可用"),
+    ("Could not use that location.", "无法使用该位置。"),
+]
+
+
+def ts_key(k: str) -> str:
+    if k.isidentifier() and not k[0].isdigit():
+        return k
+    return '"' + k.replace("\\", "\\\\").replace('"', '\\"') + '"'
+
+
+def ts_val(v: str) -> str:
+    return '"' + v.replace("\\", "\\\\").replace('"', '\\"') + '"'
+
+
+lines = [
+    "// Strings from settings, onboarding, providers, personas, skills, memory, integrations.",
+    "export const zhSettings: Record<string, string> = {",
+]
+seen = set()
+for k, v in sorted(entries):
+    if k in seen:
+        continue
+    seen.add(k)
+    lines.append(f"  {ts_key(k)}: {ts_val(v)},")
+lines.append("};")
+out = "\n".join(lines) + "\n"
+io.open("src/i18n/zh/settings.ts", "w", encoding="utf-8").write(out)
+print("entries:", len(seen))

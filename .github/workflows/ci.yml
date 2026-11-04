@@ -1,0 +1,117 @@
+# App CI — the coworker Python suite, the GUI unit tests, and the hermetic
+# Playwright e2e suite (mocked /v1 + WS; no model or network needed).
+
+name: CI
+
+on: [push, pull_request]
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install ruff
+        run: pip install "ruff>=0.17.3"
+      - name: Ruff
+        run: ruff check coworker tests scripts
+
+  pytest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[messaging,dev,bedrock]"
+      - name: Test
+        run: pytest tests -q
+
+  # Windows: catch platform-only failures (time.tzset, UTF-8 decoding, PowerShell
+  # shell semantics) that the Linux CI can never see. The two known Windows failures
+  # were fixed in tests; keep this job blocking so they stay fixed.
+  pytest-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[messaging,dev,bedrock]"
+      - name: Test
+        shell: pwsh
+        run: pytest tests -q
+
+  gui-unit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: surfaces/gui/package-lock.json
+      - name: npm ci
+        working-directory: surfaces/gui
+        run: npm ci
+      - name: i18n key check
+        run: python3 surfaces/gui/scripts/check_i18n.py
+      - name: Typecheck
+        working-directory: surfaces/gui
+        run: npx tsc --noEmit
+      - name: Unit tests
+        working-directory: surfaces/gui
+        run: npm test
+
+  gui-unit-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: surfaces/gui/package-lock.json
+      - name: npm ci
+        working-directory: surfaces/gui
+        shell: pwsh
+        run: npm ci
+      - name: i18n key check
+        shell: pwsh
+        run: python surfaces/gui/scripts/check_i18n.py
+      - name: Typecheck
+        working-directory: surfaces/gui
+        shell: pwsh
+        run: npx tsc --noEmit
+      - name: Unit tests
+        working-directory: surfaces/gui
+        shell: pwsh
+        run: npm test
+
+  gui-e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: surfaces/gui/package-lock.json
+      - name: npm ci
+        working-directory: surfaces/gui
+        run: npm ci
+      - name: Install Playwright browsers
+        working-directory: surfaces/gui
+        run: npx playwright install --with-deps chromium
+      - name: e2e
+        working-directory: surfaces/gui
+        run: npm run e2e

@@ -1,0 +1,41 @@
+# Tasks：manager.py 拆分
+
+前置（T0）之后严格按序执行；每步完成后立即勾掉。所有 pytest 在 Windows 上必须 `dangerouslyDisableSandbox`。
+
+- [x] T0 快照：`Copy-Item coworker\server\manager.py .trae\specs\manager-split\manager.py.before`
+- [x] T1 helpers → `manager_helpers.py`（L116-181、L6571-6670）；manager.py 冗余别名再导出 `_grants_of/_approval_body/_last_assistant_text`
+  - 验证：`pytest tests\test_inbox.py tests\test_readonly_grant.py tests\test_automation.py -q`
+- [x] T2 settings(+security) → `manager_settings.py`（L3363-3392、3491-3799、6468-6570）
+  - 验证：`pytest tests\test_auto_approve_settings.py tests\test_security_bundles.py tests\test_security_workflow.py -q`
+- [x] T3 memory → `manager_memory.py`（L6217-6467）
+  - 验证：`pytest tests\test_memory_api.py tests\test_memory_markdown.py -q`
+- [x] T4 skills → `manager_skills.py`（L5945-6077、6098-6216）
+  - 验证：`pytest tests\test_persona_skills.py -q; pytest tests -q -k skill`
+- [x] T5 artifacts → `manager_artifacts.py`（L2800-3041）；test_artifact_walk.py:37 锚点改 `coworker.server.manager_artifacts.os.walk`
+  - 验证：`pytest tests\test_artifact_walk.py -q`
+- [x] T6 workspaces(+roots) → `manager_workspaces.py`（L366-576、5362-5390、5534-5765、6078-6097）
+  - 验证：`pytest tests\test_multiroot.py tests\test_project_bindings.py -q`
+- [x] T7 sessions(+checkpoints/autotitle/running) → `manager_sessions.py`（L781-849、942-972、1363-1368、4697-4731、5391-5533、5766-5839、5851-5944）
+  - 验证：`pytest tests\test_autotitle.py tests\test_session_events.py tests\test_durable_resume.py -q`
+- [x] T8 personas(+connections) → `manager_personas.py`（L888-941、973-1225）
+  - 验证：`pytest tests\test_persona_connections.py tests\test_connections.py -q`
+- [x] T9 providers(+models/codex) → `manager_providers.py`（L3042-3362、3393-3490、5840-5850）
+  - 验证：`pytest tests\test_providers.py tests\test_provider_router.py tests\test_codex_provider.py -q`
+- [x] T10 mcp → `manager_mcp.py`（L1397-1774）；锚点改 `coworker.server.manager_mcp.*`：test_mcp.py:528/573/607（load_mcp_servers）、test_server.py:1111（read_global）/1118（load_mcp_servers）
+  - 验证：`pytest tests\test_mcp.py tests\test_mcp_oauth.py tests\test_mcp_connectors.py tests\test_server.py -q`
+- [x] T11 inbox(+bindings) → `manager_inbox.py`（L1226-1396、3923-3954、4564-4670）
+  - 验证：`pytest tests\test_inbox.py tests\test_interactions.py tests\test_dm_routing.py -q`
+- [x] T12 approvals(+list_audit) → `manager_approvals.py`（L1842-1853、4317-4563）
+  - 验证：`pytest tests\test_approval_integrity.py tests\test_readonly_grant.py tests\test_ask_user_upgrades.py -q`
+- [x] T13 scheduler(+automations) → `manager_scheduler.py`（L4671-4696、4732-4740、4972-5327）
+  - 验证：`pytest tests\test_automation.py tests\test_automation_create.py tests\test_wake_resume.py -q`
+- [x] T14 teams → `manager_teams.py`（L1887-2799）；锚点改 `coworker.server.manager_teams.get_agent`：test_team_wake.py:203/246/314/481
+  - 验证：`pytest tests\test_team_wake.py -q; pytest tests -q -k "team or board or journal"`
+- [x] T15 connectors(+gateway/dispatch/slack/github) → `manager_connectors.py`（L1775-1841、1854-1886、3800-4126、4127-4275、4741-4971）
+  - 验证：`pytest tests\test_connectors.py tests\test_connectors_allowlist.py tests\test_mention_router.py tests\test_message_source.py tests\test_egress.py tests\test_github_installs.py tests\test_hubspot_portals.py tests\test_openshell.py -q`
+- [x] T16 核心清理：裁剪 manager.py import；确认 `SessionManager` 基类列表完整；`ruff check coworker tests scripts` → 0
+- [x] T17 全量验收：
+  - [x] 冒烟 import（2026-11-04 非沙箱实测通过，SessionManager 288 个可见属性）
+  - [x] 方法守恒（静态 AST 校验：快照 277 个方法 vs 14 mixin + 核心 15 个，缺失 0 / 多余 0 / 重名 0）
+  - [x] 全量 `pytest tests -q` → 2054 passed / 9 skipped（33:08，与基线一致）
+  - [x] 删除快照 `manager.py.before`

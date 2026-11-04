@@ -1,0 +1,16 @@
+.git
+.gitignore
+.venv
+.pytest-tmp*
+.drill-tmp
+.drill-state
+node_modules
+surfaces
+docs
+reports
+tests
+__pycache__
+*.pyc
+.pytest_cache
+.ruff_cache
+.mypy_cache

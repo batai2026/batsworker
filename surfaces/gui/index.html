@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>OpenWorker</title>
+    <meta name="description" content="AI that gets your everyday tasks done." />
+    <!-- PWA / multi-device: installable + standalone full-screen on phones/tablets
+         (manifest + theme color + iOS meta). A service worker is a deliberate follow-up —
+         caching would complicate the sidecar-token bootstrapping of the browser build. -->
+    <link rel="manifest" href="manifest.webmanifest" />
+    <meta name="theme-color" content="#2563eb" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="OpenWorker" />
+    <link rel="apple-touch-icon" href="icons/icon-192.png" />
+    <link rel="icon" type="image/svg+xml" href="icons/icon.svg" />
+    <!-- Resolve the theme before first paint (no white flash for dark users).
+         Must match src/theme.ts: key "openwork-theme", absent/invalid = auto = follow macOS. -->
+    <script>
+      try {
+        var t = localStorage.getItem("openwork-theme");
+        var dark = t === "dark" || (t !== "light" && window.matchMedia("(prefers-color-scheme: dark)").matches);
+        document.documentElement.dataset.theme = dark ? "dark" : "light";
+      } catch (e) {}
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
