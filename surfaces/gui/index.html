@@ -6,8 +6,8 @@
     <title>OpenWorker</title>
     <meta name="description" content="AI that gets your everyday tasks done." />
     <!-- PWA / multi-device: installable + standalone full-screen on phones/tablets
-         (manifest + theme color + iOS meta). A service worker is a deliberate follow-up —
-         caching would complicate the sidecar-token bootstrapping of the browser build. -->
+         (manifest + theme color + iOS meta). The service worker (public/sw.js) caches only
+         same-origin static assets; API calls to the sidecar stay network-only. -->
     <link rel="manifest" href="manifest.webmanifest" />
     <meta name="theme-color" content="#2563eb" />
     <meta name="mobile-web-app-capable" content="yes" />
@@ -25,9 +25,34 @@
         document.documentElement.dataset.theme = dark ? "dark" : "light";
       } catch (e) {}
     </script>
+    <!-- First-paint shell: shown while the JS bundle downloads/parses (the bundle is ~900 KB).
+         createRoot() replaces #root's children on mount, so this needs no teardown JS. Colors
+         mirror src/styles.css --paper/--accent for light and dark; no text, because i18n lives
+         in the bundle and an untranslated string would flash. -->
+    <style>
+      html, body { margin: 0; height: 100%; }
+      html, body { background: #f5f6f7; }
+      html[data-theme="dark"], html[data-theme="dark"] body { background: #131417; }
+      .boot-shell {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        height: 100vh;
+        color: #2563eb;
+      }
+      html[data-theme="dark"] .boot-shell { color: #4c8dff; }
+      .boot-shell svg { width: 38px; height: 38px; opacity: 0.9; animation: boot-pulse 1.4s ease-in-out infinite; }
+      @keyframes boot-pulse {
+        0%, 100% { opacity: 0.35; transform: scale(0.96); }
+        50% { opacity: 0.9; transform: scale(1.04); }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .boot-shell svg { animation: none; }
+      }
+    </style>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root"><div class="boot-shell" aria-hidden="true"><svg viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M12.00 1.80 L13.35 9.66 L20.83 6.90 L14.70 12.00 L20.83 17.10 L13.35 14.34 L12.00 22.20 L10.65 14.34 L3.17 17.10 L9.30 12.00 L3.17 6.90 L10.65 9.66 Z" /></svg></div></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

@@ -127,8 +127,9 @@ The web build becomes installable and phone-friendly.
 - Mobile CSS: right rail becomes a full-height overlay ≤900 px (chat keeps the
   width), `100dvh` for the URL bar, narrower sidebar + larger composer text on
   ≤640 px (avoids iOS focus zoom).
-- No service worker yet (would complicate sidecar-token bootstrapping) — noted as
-  a follow-up in `index.html`.
+- Service worker (`public/sw.js`, production browser builds only): precaches the
+  shell and content-hashed assets for offline reloads; `/v1/*` API calls and
+  WebSockets stay network-only so the sidecar launch token is never cached.
 
 ## 7. Parallel subagents & task chunking (`coworker/tools/subagent.py`)
 

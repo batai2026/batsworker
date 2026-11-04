@@ -28,7 +28,7 @@ areas were called out as the main gaps before a 1.0 release:
 | P1 | Sandbox GUI toggle + `sandboxed` status visible | ✅ Done |
 | P2 | Windows packaging in CI + Authenticode signing | ✅ Done (release job existed; Authenticode signing scaffold added) |
 | P2 | Real security-loop drill + report (`scripts/security_drill.py`, `reports/security-drill.md`) | ✅ Done |
-| P2 | PWA mobile smoke test + Lighthouse audit | ✅ Lighthouse ran (real browser, final): **SEO 100 · A11y 100 · Best Practices 96 · PWA installability 2/2 · Performance 50**. Fixed: `<main>` landmark, prod sourcemaps, `--faint` contrast tokens (light + dark). Best Practices 96 = console network errors (no backend on static-serve audit) + security headers (deployment-level). Service Worker (offline) remains deferred |
+| P2 | PWA mobile smoke test + Lighthouse audit | ✅ Lighthouse ran (real browser, final): **SEO 100 · A11y 100 · Best Practices 96 · PWA installability 2/2 · Performance 50**. Fixed: `<main>` landmark, prod sourcemaps, `--faint` contrast tokens (light + dark). Best Practices 96 = console network errors (no backend on static-serve audit) + security headers (deployment-level). Service Worker (offline shell) added in `public/sw.js`; inline first-paint shell in `index.html` |
 | P2 | Sandbox v2: per-command probe + runtime fallback | ✅ Done (`DockerExecutor` falls back locally with `sandboxed:false` + reason) |
 | P2 | Sandbox v2: background tasks | ✅ Done (long-lived container + `docker exec`, output readback, kill) |
 | P2 | Sandbox v2: file tools through the sandbox (full read/write/replace/patch/list + multi-root + host fallback) | ✅ Done (`sandbox_files.py` + `unified_diff.py` + catalog swap) |
