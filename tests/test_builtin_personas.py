@@ -51,3 +51,24 @@ def test_code_keeps_single_root_file_tools(tmp_path):
     names = _names(reg.agent("code"), _ctx(tmp_path))
     assert "read_file" in names and "read_file_lines" not in names
     assert "git_log" in names  # code has git; cowork/ops do not
+
+
+def test_minimal_preset_is_files_and_shell_only(tmp_path):
+    """P1-4：minimal 是模型基准用的最小 harness — 不含 git/search/todo。"""
+    reg = PersonaRegistry()
+    a = reg.agent("minimal")
+    names = _names(a, _ctx(tmp_path))
+    assert "read_file" in names and "run_shell" in names
+    assert "git_log" not in names and "grep" not in names
+    assert a.requires_folder and not a.subagents and not a.scheduling
+    assert not a.messaging and not a.connectors
+
+
+def test_creator_preset_has_todo_and_search(tmp_path):
+    """P1-4：creator 需要检索能力槽与待办来创作/调试插件。"""
+    reg = PersonaRegistry()
+    a = reg.agent("creator")
+    names = _names(a, _ctx(tmp_path))
+    assert {"read_file", "grep", "run_shell"} <= names
+    assert a.requires_folder and a.subagents and not a.scheduling
+

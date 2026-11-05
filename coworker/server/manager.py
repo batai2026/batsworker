@@ -80,6 +80,7 @@ from .manager_approvals import ApprovalsMixin
 from .manager_scheduler import SchedulerMixin
 from .manager_memory import MemoryMixin
 from .manager_skills import SkillsMixin
+from .manager_plugins import PluginsMixin
 
 logger = logging.getLogger("coworker.manager")
 
@@ -99,6 +100,7 @@ class SessionManager(
     SchedulerMixin,
     MemoryMixin,
     SkillsMixin,
+    PluginsMixin,
 ):
     def __init__(
         self,

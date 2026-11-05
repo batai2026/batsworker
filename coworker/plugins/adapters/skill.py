@@ -27,6 +27,23 @@ class SkillAdapter:
             description=native.description,
         )
 
+    def from_row(self, row: dict[str, Any]) -> PluginManifest:
+        """Project a Settings listing row (name/description/scope/source/enabled).
+
+        The listing is already parsed (see ``SkillStore.rows``), so the plugin inventory
+        can be built without re-reading every SKILL.md.
+        """
+        name = str(row.get("name") or "")
+        return PluginManifest(
+            kind=KIND_SKILL,
+            id=name,
+            name=name,
+            capability_set=frozenset({f"skill:{name}"}) if name else frozenset(),
+            permissions={"scope": row.get("scope", ""), "enabled": bool(row.get("enabled", True))},
+            source=row.get("source"),
+            description=str(row.get("description") or ""),
+        )
+
     def capability_set(self, native: Skill) -> frozenset[str]:
         return frozenset({f"skill:{native.name}"})
 

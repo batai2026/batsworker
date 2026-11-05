@@ -1,0 +1,458 @@
+"""「模型 × harness」矩阵评测。
+
+用录制会话的每一轮用户输入，在固定的 harness（能力槽 + 系统提示 + 权限模式）下重跑，
+把轨迹账本里的 model_request 摘要（digest / bytes / model / tools）收集成可横向比较的报告。
+
+设计约束：
+- 输入取自 conversations/<sid>.jsonl 的原始用户消息（不脱敏），turn 边界由轨迹账本
+  turn_start.message_count 给出（与 fork/replay 用的是同一映射）。
+- 每个 (harness, model) cell 用一个全新的引擎 + 临时轨迹账本，互不污染。
+- 默认不执行任何工具审批（引擎默认 deny），需要无人值守跑工具时显式 --auto-approve。
+- --stub 用确定性假 provider，不联网、不花钱，供 pytest 覆盖脚手架。
+"""
+
+from __future__ import annotations
+
+import argparse
+import asyncio
+import json
+import re
+import sys
+import time
+import uuid
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any, Callable, Optional
+
+from ..agent import build_engine
+from ..agents.base import Agent
+from ..agents.code import CODE_INSTRUCTIONS
+from ..attachments import content_to_text
+from ..catalog import expand
+from ..permissions import Mode
+from ..providers import (
+    AssistantTurn,
+    ModelCapabilities,
+    ProviderClient,
+)
+from ..secrets import state_dir
+from ..trajectory import SessionTrajectory, TrajectoryStore
+
+# 最小 harness 的系统提示：只讲工具与验证，不给额外策略，避免提示本身污染模型对比。
+_MINIMAL_PROMPT = (
+    "You are a minimal coding harness: shell plus file editing, nothing else.\n"
+    "- Read before you edit: use read_file and grep to see the current state.\n"
+    "- Make the smallest change that satisfies the request.\n"
+    "- After changing something, run the narrowest command that verifies it.\n"
+    "- Report what you changed with path:line references."
+)
+
+_CREATOR_PROMPT = (
+    "You create and debug OpenWorker extensions: personas (coworkers), skills, and "
+    "connector plugins. Inspect existing bundles and the closed capability catalog first, "
+    "write a complete bundle, then preview its consent summary before installing. Never "
+    "widen your own authority (no risk overrides, no trust edits)."
+)
+
+
+@dataclass(frozen=True)
+class HarnessSpec:
+    """一个 harness = 能力槽集合 + 系统提示 + 权限模式。"""
+
+    name: str
+    capabilities: tuple[str, ...]
+    system_prompt: str
+    mode: str = "interactive"
+
+
+HARNESSES: dict[str, HarnessSpec] = {
+    "minimal": HarnessSpec(
+        name="minimal",
+        capabilities=("code_files", "shell"),
+        system_prompt=_MINIMAL_PROMPT,
+    ),
+    "code": HarnessSpec(
+        name="code",
+        capabilities=("code_files", "git", "search", "shell", "todo"),
+        system_prompt=CODE_INSTRUCTIONS,
+    ),
+    "creator": HarnessSpec(
+        name="creator",
+        capabilities=("code_files", "search", "shell", "todo"),
+        system_prompt=_CREATOR_PROMPT,
+    ),
+}
+
+
+@dataclass
+class RecordedTurn:
+    """录制会话里的一轮用户输入。"""
+
+    turn: int
+    input_text: str
+
+
+# -- 录制侧 -------------------------------------------------------------------
+
+
+def _read_jsonl(path: Path) -> list[dict[str, Any]]:
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return []
+    rows: list[dict[str, Any]] = []
+    for line in lines:
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            row = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(row, dict):
+            rows.append(row)
+    return rows
+
+
+def recorded_turns(
+    session_id: str,
+    *,
+    conv_dir: str | Path | None = None,
+    trajectory_dir: str | Path | None = None,
+) -> list[RecordedTurn]:
+    """从落盘消息 + 轨迹账本重建每轮的用户输入。
+
+    turn_start 在用户消息 append 之后记录，因此 `message_count - 1` 正是该轮用户消息下标
+    （与 fork 的切割点定义一致）。
+    """
+    base = state_dir()
+    conv_path = Path(conv_dir).expanduser() if conv_dir else base / "conversations"
+    traj_path = Path(trajectory_dir).expanduser() if trajectory_dir else base / "trajectory"
+    messages = _read_jsonl(conv_path / f"{session_id}.jsonl")
+    rows = _read_jsonl(traj_path / f"{session_id}.jsonl")
+    turns: list[RecordedTurn] = []
+    for row in rows:
+        if row.get("kind") != "turn_start":
+            continue
+        data = row.get("data") or {}
+        try:
+            index = int(data.get("message_count", 0)) - 1
+        except (TypeError, ValueError):
+            continue
+        if index < 0 or index >= len(messages):
+            continue
+        message = messages[index] or {}
+        if message.get("role") != "user":
+            continue
+        text = content_to_text(message.get("content"), image_placeholder="").strip()
+        if not text:
+            continue
+        try:
+            turn_no = int(row.get("turn") or 0)
+        except (TypeError, ValueError):
+            turn_no = 0
+        turns.append(RecordedTurn(turn=turn_no, input_text=text))
+    return turns
+
+
+# -- provider -------------------------------------------------------------------
+
+
+class StubProvider(ProviderClient):
+    """确定性假 provider：每次调用返回一句固定文本，不联网、不调工具。"""
+
+    def __init__(self, reply: str = "ok") -> None:
+        self.reply = reply
+        self.calls = 0
+
+    def complete(self, *, model, messages, tools=None, **settings):  # noqa: ANN001
+        self.calls += 1
+        return AssistantTurn(text=self.reply, finish_reason="stop")
+
+    def capabilities(self, model):  # noqa: ANN001
+        return ModelCapabilities()
+
+
+def _real_provider_factory() -> Callable[[str, HarnessSpec], ProviderClient]:
+    from ..providers.router import ProviderRouter
+    from ..secrets import SecretStore
+
+    def factory(model: str, _spec: HarnessSpec) -> ProviderClient:
+        return ProviderRouter(SecretStore())
+
+    return factory
+
+
+def _stub_provider_factory() -> Callable[[str, HarnessSpec], ProviderClient]:
+    def factory(_model: str, _spec: HarnessSpec) -> ProviderClient:
+        return StubProvider()
+
+    return factory
+
+
+async def _allow_once(_request):  # noqa: ANN001
+    from ..engine import ApprovalOutcome
+
+    return ApprovalOutcome.ONCE
+
+
+# -- 执行侧 -------------------------------------------------------------------
+
+
+def _harness_agent(spec: HarnessSpec) -> Agent:
+    caps = list(spec.capabilities)
+    return Agent(
+        name=spec.name,
+        title=spec.name,
+        system_prompt=spec.system_prompt,
+        tool_factory=lambda ctx: expand(caps, ctx),
+        requires_folder=True,
+    )
+
+
+def _slug(model: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "-", model.lower()).strip("-") or "model"
+
+
+def _requests_by_turn(records: list[dict[str, Any]]) -> dict[int, dict[str, int]]:
+    out: dict[int, dict[str, int]] = {}
+    for row in records:
+        if row.get("kind") != "model_request":
+            continue
+        try:
+            turn = int(row.get("turn") or 0)
+        except (TypeError, ValueError):
+            turn = 0
+        data = row.get("data") or {}
+        slot = out.setdefault(turn, {"requests": 0, "bytes": 0})
+        slot["requests"] += 1
+        try:
+            slot["bytes"] += int(data.get("bytes") or 0)
+        except (TypeError, ValueError):
+            pass
+        # 保留最后一次（出站负载）的摘要，供逐字节比较。
+        out[turn]["digest"] = str(data.get("digest") or "")
+        out[turn]["model"] = str(data.get("model") or "")
+        out[turn]["tools"] = list(data.get("tools") or [])
+    return out
+
+
+def _tool_calls_by_turn(records: list[dict[str, Any]]) -> dict[int, int]:
+    out: dict[int, int] = {}
+    for row in records:
+        if row.get("kind") != "tool_call":
+            continue
+        try:
+            turn = int(row.get("turn") or 0)
+        except (TypeError, ValueError):
+            turn = 0
+        out[turn] = out.get(turn, 0) + 1
+    return out
+
+
+async def _run_cell(
+    spec: HarnessSpec,
+    model: str,
+    turns: list[RecordedTurn],
+    *,
+    workspace: Path,
+    provider_factory: Callable[[str, HarnessSpec], ProviderClient],
+    auto_approve: bool,
+    work_dir: Path,
+) -> dict[str, Any]:
+    provider = provider_factory(model, spec)
+    agent = _harness_agent(spec)
+    engine = build_engine(
+        agent=agent,
+        workspace=workspace,
+        model=model,
+        mode=Mode(spec.mode),
+        provider=provider,
+        approver=_allow_once if auto_approve else None,
+    )
+    session_id = f"eval-{spec.name}-{_slug(model)}-{uuid.uuid4().hex[:6]}"
+    store = TrajectoryStore(work_dir)
+    engine.trajectory = SessionTrajectory(store, session_id)
+
+    per_turn: list[dict[str, Any]] = []
+    error: Optional[str] = None
+    for turn in turns:
+        started = time.perf_counter()
+        status = "ok"
+        try:
+            async for _event in engine.run(turn.input_text):
+                pass
+        except Exception as exc:  # 一个 cell 失败不影响矩阵其它 cell
+            status = "error"
+            error = f"{type(exc).__name__}: {exc}"
+        per_turn.append(
+            {
+                "turn": turn.turn,
+                "status": status,
+                "duration_s": round(time.perf_counter() - started, 3),
+            }
+        )
+        if status == "error":
+            break
+
+    records = store.read(session_id, limit=100000)
+    requests = _requests_by_turn(records)
+    tool_calls = _tool_calls_by_turn(records)
+    for item in per_turn:
+        data = requests.get(int(item["turn"]) or 0, {})
+        item["digest"] = data.get("digest", "")
+        item["bytes"] = data.get("bytes", 0)
+        item["model"] = data.get("model", "")
+        item["tools"] = data.get("tools", [])
+        item["requests"] = data.get("requests", 0)
+        item["tool_calls"] = tool_calls.get(int(item["turn"]) or 0, 0)
+    return {
+        "harness": spec.name,
+        "model": model,
+        "session_id": session_id,
+        "status": "error" if error else "ok",
+        "error": error,
+        "turns": per_turn,
+    }
+
+
+async def run_matrix(
+    *,
+    turns: list[RecordedTurn],
+    models: list[str],
+    harness_names: list[str],
+    workspace: str | Path,
+    provider_factory: Optional[Callable[[str, HarnessSpec], ProviderClient]] = None,
+    auto_approve: bool = False,
+    out_path: str | Path | None = None,
+    work_dir: str | Path | None = None,
+) -> dict[str, Any]:
+    """跑完整矩阵，返回（并可选写出）报告字典。"""
+    unknown = [n for n in harness_names if n not in HARNESSES]
+    if unknown:
+        raise ValueError(f"unknown harness: {', '.join(unknown)}")
+    ws = Path(workspace).expanduser().resolve()
+    factory = provider_factory or _real_provider_factory()
+    base = Path(work_dir).expanduser() if work_dir else Path(_temp_dir())
+    base.mkdir(parents=True, exist_ok=True)
+
+    cells: list[dict[str, Any]] = []
+    for name in harness_names:
+        spec = HARNESSES[name]
+        for model in models:
+            cells.append(
+                await _run_cell(
+                    spec,
+                    model,
+                    turns,
+                    workspace=ws,
+                    provider_factory=factory,
+                    auto_approve=auto_approve,
+                    work_dir=base,
+                )
+            )
+
+    report: dict[str, Any] = {
+        "generated_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
+        "workspace": str(ws),
+        "turns": [t.turn for t in turns],
+        "models": models,
+        "harnesses": harness_names,
+        "cells": cells,
+    }
+    if out_path is not None:
+        target = Path(out_path).expanduser()
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
+    return report
+
+
+def _temp_dir() -> Path:
+    import tempfile
+
+    return Path(tempfile.mkdtemp(prefix="coworker-eval-"))
+
+
+# -- CLI ----------------------------------------------------------------------
+
+
+def main(argv: Optional[list[str]] = None) -> int:
+    parser = argparse.ArgumentParser(
+        prog="coworker.eval.matrix",
+        description="用录制轨迹跑「模型 × harness」矩阵评测",
+    )
+    parser.add_argument("--session", help="录制的会话 id（conversations/<id>.jsonl）")
+    parser.add_argument("--conv-dir", help="会话消息目录（默认 <state>/conversations）")
+    parser.add_argument("--trajectory-dir", help="轨迹账本目录（默认 <state>/trajectory）")
+    parser.add_argument("--models", help="逗号分隔的模型 id，如 openai:gpt-5.6-sol,anthropic:claude-opus-4-8")
+    parser.add_argument(
+        "--harnesses",
+        default="minimal",
+        help="逗号分隔的 harness 名（minimal / code / creator）",
+    )
+    parser.add_argument("--workspace", default=".", help="评测用工作区（默认当前目录）")
+    parser.add_argument("--stub", action="store_true", help="用确定性假 provider，不联网")
+    parser.add_argument(
+        "--auto-approve",
+        action="store_true",
+        help="自动批准工具调用（无人值守跑工具时才开；默认引擎拒绝）",
+    )
+    parser.add_argument("--max-turns", type=int, default=0, help="最多跑前 N 轮（0 = 全部）")
+    parser.add_argument("--out", help="报告 JSON 输出路径")
+    args = parser.parse_args(argv)
+
+    harness_names = [h.strip() for h in args.harnesses.split(",") if h.strip()]
+    bad = [h for h in harness_names if h not in HARNESSES]
+    if bad:
+        print(f"unknown harness: {', '.join(bad)}", file=sys.stderr)
+        return 2
+
+    models = [m.strip() for m in (args.models or "").split(",") if m.strip()]
+    if not models:
+        if not args.stub:
+            print("--models is required unless --stub is set", file=sys.stderr)
+            return 2
+        models = ["stub:model"]
+
+    if not args.session:
+        print("--session is required (recorded session id)", file=sys.stderr)
+        return 2
+
+    turns = recorded_turns(
+        args.session, conv_dir=args.conv_dir, trajectory_dir=args.trajectory_dir
+    )
+    if args.max_turns:
+        turns = turns[: args.max_turns]
+    if not turns:
+        print(
+            f"no recorded turns found for session {args.session!r} "
+            "(check --conv-dir / --trajectory-dir)",
+            file=sys.stderr,
+        )
+        return 2
+
+    factory = _stub_provider_factory() if args.stub else _real_provider_factory()
+    report = asyncio.run(
+        run_matrix(
+            turns=turns,
+            models=models,
+            harness_names=harness_names,
+            workspace=args.workspace,
+            provider_factory=factory,
+            auto_approve=args.auto_approve,
+            out_path=args.out,
+        )
+    )
+    for cell in report["cells"]:
+        digests = [t.get("digest", "")[:12] for t in cell["turns"]]
+        print(
+            f"{cell['harness']:<8} {cell['model']:<32} {cell['status']:<5} "
+            f"turns={len(cell['turns'])} digests={digests}"
+        )
+        if cell.get("error"):
+            print(f"  error: {cell['error']}")
+    return 0 if all(c["status"] == "ok" for c in report["cells"]) else 1
+
+
+if __name__ == "__main__":  # pragma: no cover
+    raise SystemExit(main())

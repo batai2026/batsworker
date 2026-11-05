@@ -30,15 +30,17 @@ def test_builtins_present(tmp_path):
 
 
 def test_release_lineup(tmp_path, monkeypatch):
-    # A release build (no flag) offers exactly OpenWorker + the security coworkers;
-    # Code is listed in Settings but disabled + unsurfaced (the recovery path).
+    # A release build (no flag) offers OpenWorker + the security coworkers + the
+    # Minimal/Creator presets; Code is listed in Settings but disabled + unsurfaced.
     monkeypatch.delenv("OPENWORKER_UNSHIPPED", raising=False)
     reg = _reg(tmp_path)
     assert [e["name"] for e in reg.sidebar()] == [
-        "cowork", "cloud-posture", "dep-audit", "security",
+        "cowork", "cloud-posture", "creator", "dep-audit", "minimal", "security",
     ]
     listed = {p["id"]: p for p in reg.list_all()}
-    assert set(listed) == {"cowork", "code", "cloud-posture", "dep-audit", "security"}
+    assert set(listed) == {
+        "cowork", "code", "cloud-posture", "creator", "dep-audit", "minimal", "security",
+    }
     assert listed["code"]["enabled"] is False and listed["code"]["surfaced"] is False
     assert listed["cloud-posture"]["group"] == "security"
     assert listed["cowork"]["group"] == "general"
@@ -68,7 +70,7 @@ def test_sidebar_defaults_to_surfaced_builtins(tmp_path, internal):
     # Leads surface (the user's entry to a team — "the team IS the lead"); team
     # workers never do.
     assert set(ids) == {
-        "cowork", "ops", "security", "cloud-posture", "dep-audit",
+        "cowork", "ops", "security", "cloud-posture", "dep-audit", "minimal", "creator",
         "swe-lead", "devsecops-lead", "devops-lead", "triage-lead",
     }
     assert not any(
