@@ -54,6 +54,26 @@ _CREATOR_PROMPT = (
     "widen your own authority (no risk overrides, no trust edits)."
 )
 
+# code-mode 试验 harness：与 minimal 同槽位，差异只在提示与输出协议
+# （工具以代码 API 呈现、要求单一代码块编排）。引擎不变，代码不被真正执行。
+_CODE_MODE_PROMPT = (
+    "You orchestrate work by writing code, not by calling tools one at a time.\n"
+    "Code API (call these from inside your program):\n"
+    "- read_file(path) -> str                       # line-numbered file read\n"
+    "- write_file(path, content) -> None            # whole-file write\n"
+    "- grep(pattern, path?) -> list[str]            # ripgrep search\n"
+    "- run_shell(cmd) -> {exit_code, stdout, stderr}\n"
+    "Rules:\n"
+    "- Do the work in ONE fenced ```python code block; combine reads, transforms,\n"
+    "  edits, and verification in that single program.\n"
+    "- Outside the block, only state the result — no second block, no narration\n"
+    "  of intermediate steps.\n"
+    "- print() only what the user needs to see; keep intermediate data inside\n"
+    "  the program.\n"
+    "- If execution fails, stderr comes back as a tool error: fix the code and\n"
+    "  retry at most twice, then report the blocker."
+)
+
 
 @dataclass(frozen=True)
 class HarnessSpec:
@@ -80,6 +100,11 @@ HARNESSES: dict[str, HarnessSpec] = {
         name="creator",
         capabilities=("code_files", "search", "shell", "todo"),
         system_prompt=_CREATOR_PROMPT,
+    ),
+    "code-mode": HarnessSpec(
+        name="code-mode",
+        capabilities=("code_files", "shell"),
+        system_prompt=_CODE_MODE_PROMPT,
     ),
 }
 

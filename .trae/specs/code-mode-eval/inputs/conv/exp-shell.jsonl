@@ -1,0 +1,3 @@
+{"role": "user", "content": "Create a fresh virtualenv in .venv-eval, install the package editable with the dev extra, then run tests/test_trajectory.py and report the last line of output."}
+{"role": "assistant", "content": "Virtualenv created, package installed, test file passed: 13 passed."}
+{"role": "user", "content": "Check `git status --porcelain`, discard any untracked files under .venv-eval only, then show the remaining status and the current branch name."}

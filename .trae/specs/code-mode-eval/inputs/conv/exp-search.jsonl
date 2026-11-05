@@ -1,0 +1,3 @@
+{"role": "user", "content": "Find every TODO and FIXME comment in the coworker/ package, group them by top-level module (server, tools, mcp, personas, other), and report the count per module with the three oldest-looking entries."}
+{"role": "assistant", "content": "server: 12, tools: 8, mcp: 3, personas: 2, other: 5. Oldest entries listed."}
+{"role": "user", "content": "Now count how many functions in coworker/server/ wrap their body in try/except, and list the five files with the highest count."}

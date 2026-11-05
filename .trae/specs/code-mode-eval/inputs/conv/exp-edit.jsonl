@@ -1,0 +1,3 @@
+{"role": "user", "content": "Rename the function `load_manifest` to `load_manifest_file` everywhere it is defined or called under coworker/personas/ and tests/. Verify with a grep that no old name remains."}
+{"role": "assistant", "content": "Renamed in 6 files; grep confirms no remaining `load_manifest` references."}
+{"role": "user", "content": "Now add a regression test in tests/test_manifest_rename.py asserting the new name exists and the old name is gone, then run that single test file."}

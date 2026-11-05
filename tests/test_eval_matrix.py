@@ -71,9 +71,36 @@ def test_recorded_turns_skips_out_of_range_and_non_user(tmp_path):
 
 
 def test_runs_are_declared_with_minimal_and_creator():
-    assert set(HARNESSES) == {"minimal", "code", "creator"}
+    assert set(HARNESSES) == {"minimal", "code", "creator", "code-mode"}
     assert HARNESSES["minimal"].capabilities == ("code_files", "shell")
     assert "todo" in HARNESSES["creator"].capabilities
+
+
+def test_code_mode_harness_shares_minimal_slots_but_own_prompt():
+    cm = HARNESSES["code-mode"]
+    assert cm.capabilities == HARNESSES["minimal"].capabilities
+    assert cm.system_prompt != HARNESSES["minimal"].system_prompt
+    assert "```python" in cm.system_prompt  # 单一代码块输出协议
+
+
+@pytest.mark.asyncio
+async def test_run_matrix_stub_runs_code_mode(tmp_path):
+    report = await run_matrix(
+        turns=[RecordedTurn(turn=1, input_text="hello")],
+        models=["stub:model"],
+        harness_names=["code-mode"],
+        workspace=tmp_path,
+        provider_factory=matrix._stub_provider_factory(),
+        work_dir=tmp_path / "work",
+    )
+    assert report["harnesses"] == ["code-mode"]
+    (cell,) = report["cells"]
+    assert cell["status"] == "ok"
+    (turn,) = cell["turns"]
+    assert turn["status"] == "ok"
+    assert len(turn["digest"]) == 64
+    assert "read_file" in turn["tools"]  # 槽位与 minimal 一致
+    assert "grep" not in turn["tools"]
 
 
 @pytest.mark.asyncio

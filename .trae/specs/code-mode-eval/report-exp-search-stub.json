@@ -1,0 +1,147 @@
+{
+  "generated_at": "2026-11-06T05:59:42",
+  "workspace": "E:\\tworkspace\\openworker-0.2.1",
+  "turns": [
+    1,
+    2
+  ],
+  "models": [
+    "stub:model"
+  ],
+  "harnesses": [
+    "minimal",
+    "code-mode"
+  ],
+  "cells": [
+    {
+      "harness": "minimal",
+      "model": "stub:model",
+      "session_id": "eval-minimal-stub-model-6d39a2",
+      "status": "ok",
+      "error": null,
+      "turns": [
+        {
+          "turn": 1,
+          "status": "ok",
+          "duration_s": 0.016,
+          "digest": "3ad8d8fd6beffa6f9329303003bec87a5db020e99d5f6757d2e6ea578e0b055a",
+          "bytes": 3078,
+          "model": "stub:model",
+          "tools": [
+            "list_files",
+            "write_file",
+            "apply_unified_diff",
+            "apply_patch",
+            "replace_in_file",
+            "read_file",
+            "run_shell",
+            "shell_task_output",
+            "shell_task_kill",
+            "request_directory",
+            "request_tool",
+            "web_search",
+            "web_fetch",
+            "load_skill",
+            "save_skill",
+            "propose_plan"
+          ],
+          "requests": 1,
+          "tool_calls": 0
+        },
+        {
+          "turn": 2,
+          "status": "ok",
+          "duration_s": 0.006,
+          "digest": "c7ccebc8a50b80c41a1220aa8fbe418e62c0c77c68c66327f943985cb7d373e9",
+          "bytes": 3270,
+          "model": "stub:model",
+          "tools": [
+            "list_files",
+            "write_file",
+            "apply_unified_diff",
+            "apply_patch",
+            "replace_in_file",
+            "read_file",
+            "run_shell",
+            "shell_task_output",
+            "shell_task_kill",
+            "request_directory",
+            "request_tool",
+            "web_search",
+            "web_fetch",
+            "load_skill",
+            "save_skill",
+            "propose_plan"
+          ],
+          "requests": 1,
+          "tool_calls": 0
+        }
+      ]
+    },
+    {
+      "harness": "code-mode",
+      "model": "stub:model",
+      "session_id": "eval-code-mode-stub-model-4638d4",
+      "status": "ok",
+      "error": null,
+      "turns": [
+        {
+          "turn": 1,
+          "status": "ok",
+          "duration_s": 0.014,
+          "digest": "de77287c60f2a7e6b891def214715e9c95f90cf2579d22ccad5fbe10d8f0adc8",
+          "bytes": 3581,
+          "model": "stub:model",
+          "tools": [
+            "list_files",
+            "write_file",
+            "apply_unified_diff",
+            "apply_patch",
+            "replace_in_file",
+            "read_file",
+            "run_shell",
+            "shell_task_output",
+            "shell_task_kill",
+            "request_directory",
+            "request_tool",
+            "web_search",
+            "web_fetch",
+            "load_skill",
+            "save_skill",
+            "propose_plan"
+          ],
+          "requests": 1,
+          "tool_calls": 0
+        },
+        {
+          "turn": 2,
+          "status": "ok",
+          "duration_s": 0.009,
+          "digest": "bbbac6e9dd7d25acce7af1ea489f5db6f2ff693f9fb44fffc78cfdb347101c42",
+          "bytes": 3773,
+          "model": "stub:model",
+          "tools": [
+            "list_files",
+            "write_file",
+            "apply_unified_diff",
+            "apply_patch",
+            "replace_in_file",
+            "read_file",
+            "run_shell",
+            "shell_task_output",
+            "shell_task_kill",
+            "request_directory",
+            "request_tool",
+            "web_search",
+            "web_fetch",
+            "load_skill",
+            "save_skill",
+            "propose_plan"
+          ],
+          "requests": 1,
+          "tool_calls": 0
+        }
+      ]
+    }
+  ]
+}
