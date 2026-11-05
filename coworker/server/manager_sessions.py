@@ -24,6 +24,264 @@ class SessionsMixin:
     def session_timeline(self, session_id: str, *, limit: int = 500) -> list[dict[str, Any]]:
         return self.trace_store.session_spans(session_id, limit=limit)
 
+    def session_trajectory(
+        self, session_id: str, *, limit: int = 500, since_seq: int = 0
+    ) -> dict[str, Any]:
+        """Read-only turn-ledger records (trajectory.py), newest last. Works even
+        when recording is currently disabled — the files are already on disk."""
+        store = self._trajectory_store()
+        return {
+            "session_id": session_id,
+            "count": store.count(session_id),
+            "records": store.read(session_id, limit=limit, since_seq=since_seq),
+        }
+
+    # -- session fork / replay（建议路线 P0-2） ------------------------------------
+    def _turn_starts(self, session_id: str) -> list[dict[str, Any]]:
+        """账本里全部 turn_start 记录（按文件顺序）；切割点与 turn 计数的唯一权威。"""
+        return [
+            rec
+            for rec in self._trajectory_store().read(session_id, limit=100000)
+            if rec.get("kind") == "turn_start"
+        ]
+
+    def fork_session(self, session_id: str, *, turn: Optional[int] = None) -> dict[str, Any]:
+        """会话分叉：在 turn N 之前切开（不带 turn 则 tip fork 整体复制）生成新会话。
+        只复制会话状态（消息+元数据）；trajectory/checkpoints 不复制——新会话按新 id
+        天然隔离、各自从 1 编号；两分支共享同一 workspace 目录（工作区回滚走源会话
+        既有 checkpoint API，两件事正交）。fork 对源会话只读不写。"""
+        import copy
+        import uuid
+
+        if session_id.startswith("__"):
+            return {"ok": False, "status": 403, "detail": "internal sessions cannot be forked"}
+        record = self.session_store.load(session_id)
+        if record is None:
+            return {"ok": False, "status": 404, "detail": f"session {session_id} not found"}
+        if self.is_running(session_id):
+            return {
+                "ok": False,
+                "status": 409,
+                "detail": "the session is running — wait for the turn to finish",
+            }
+
+        # live 引擎内存消息领先于持久化记录，读取沿用 live 优先
+        msgs = self.session_messages(session_id)
+        if turn is None:
+            cut = len(msgs)
+            other_from_turn = len(self._turn_starts(session_id)) + 1
+        else:
+            # 切割点 = turn_start(N).data.message_count - 1（turn N 用户消息之前的所有消息）
+            cut = None
+            for rec in self._turn_starts(session_id):
+                if rec.get("turn") == turn:
+                    try:
+                        cut = int((rec.get("data") or {}).get("message_count")) - 1
+                    except (TypeError, ValueError):
+                        cut = None
+                    break
+            if cut is None:
+                return {
+                    "ok": False,
+                    "status": 400,
+                    "detail": f"turn {turn} not found in trajectory records",
+                }
+            other_from_turn = turn
+        cut = max(0, min(cut, len(msgs)))  # 越界保护（账本与消息列表理论上每 turn 同步落盘）
+
+        new_id = uuid.uuid4().hex[:12]
+        title = ((record.title or "New session")[:60] + " (fork)")[:80]
+        forked = SessionRecord(
+            session_id=new_id,
+            workspace=record.workspace,
+            model=record.model,
+            mode=record.mode,
+            messages=copy.deepcopy(msgs[:cut]),  # deepcopy 防两分支共享可变 dict
+            title=title,
+            agent=record.agent,
+            extra_roots=copy.deepcopy(record.extra_roots or []),
+            grants=copy.deepcopy(record.grants or {}),
+            # compaction 仅 tip fork 继承：mid-cut 后压缩锚点对不齐截断的消息列表，
+            # 引擎按需重新压缩
+            compaction=copy.deepcopy(record.compaction or {}) if turn is None else {},
+            # team 不继承：fork 是普通会话，不带团队身份
+            bindings=copy.deepcopy(record.bindings or {}),
+            fork={"from_session": session_id, "from_turn": turn, "cut_messages": cut},
+        )
+        self.session_store.save(forked)
+        return {
+            "ok": True,
+            "session_id": new_id,
+            "fork": forked.fork,
+            "messages": cut,
+            "title": title,
+            "diff_hint": (
+                f"/v1/sessions/{new_id}/trajectory/diff?other={session_id}"
+                f"&from_turn=1&other_from_turn={other_from_turn}"
+            ),
+        }
+
+    async def replay_session(
+        self, session_id: str, *, input: Optional[str] = None
+    ) -> dict[str, Any]:
+        """会话回放：在（通常是 fork 的）会话上后台重跑一次输入。input 省略时按血缘取
+        源会话切割点处那条 role=user 消息的文本。执行复用 deliver_to_session 后台 turn
+        管线（审批走既有 Inbox/Unattended），本方法立即返回 202 载荷。"""
+        if session_id.startswith("__"):
+            return {"ok": False, "status": 403, "detail": "internal sessions cannot be replayed"}
+        record = self.session_store.load(session_id)
+        if record is None:
+            return {"ok": False, "status": 404, "detail": f"session {session_id} not found"}
+        if self.is_running(session_id):
+            return {
+                "ok": False,
+                "status": 409,
+                "detail": "the session is running — wait for the turn to finish",
+            }
+
+        text = (input or "").strip()
+        source = "override"
+        if not text:
+            lineage = record.fork or {}
+            from_session = lineage.get("from_session")
+            cut = lineage.get("cut_messages")
+            # tip fork 的 from_turn 为 None：没有"被切掉的那条输入"可回放
+            if not from_session or lineage.get("from_turn") is None or cut is None:
+                return {
+                    "ok": False,
+                    "status": 400,
+                    "detail": "no recorded input for the forked turn",
+                }
+            src_msgs = self.session_messages(str(from_session))
+            try:
+                idx = int(cut)
+            except (TypeError, ValueError):
+                idx = -1
+            message = src_msgs[idx] if 0 <= idx < len(src_msgs) else None
+            if not message or message.get("role") != "user":
+                return {
+                    "ok": False,
+                    "status": 400,
+                    "detail": "no recorded input for the forked turn",
+                }
+            from ..attachments import content_to_text
+
+            text = content_to_text(
+                message.get("content"), image_placeholder="[image]"
+            ).strip()
+            if not text:
+                return {
+                    "ok": False,
+                    "status": 400,
+                    "detail": "no recorded input for the forked turn",
+                }
+            source = "lineage"
+
+        loop = asyncio.get_running_loop()
+        task = loop.create_task(self.deliver_to_session(session_id, text))
+        # 引用挂 manager 防 GC（同 _autotitle_tasks 模式）
+        self._replay_tasks.add(task)
+        task.add_done_callback(self._replay_tasks.discard)
+        return {
+            "ok": True,
+            "session_id": session_id,
+            "input_source": source,
+            "input_chars": len(text),
+        }
+
+    def trajectory_diff(
+        self,
+        session_id: str,
+        other: str,
+        *,
+        from_turn: int = 1,
+        other_from_turn: int = 1,
+    ) -> dict[str, Any]:
+        """轨迹对比：两侧各取 kind=="model_request" 且 turn >= 起始 turn 的记录，按序对齐
+        逐条比 digest。fork 两侧 turn 编号有天然偏移（fork 从 1 重编），故由调用方给两侧
+        起始 turn。一侧耗尽后剩余侧记 missing，不进入 compared。"""
+        store = self._trajectory_store()
+
+        def requests(sid: str, start: int) -> list[dict[str, Any]]:
+            return [
+                rec
+                for rec in store.read(sid, limit=100000)
+                if rec.get("kind") == "model_request"
+                and int(rec.get("turn") or 0) >= start
+            ]
+
+        left = requests(session_id, from_turn)
+        right = requests(other, other_from_turn)
+
+        def brief(rec: Optional[dict[str, Any]]) -> dict[str, Any]:
+            data = (rec or {}).get("data") or {}
+            return {
+                "turn": (rec or {}).get("turn"),
+                "bytes": data.get("bytes"),
+                "model": data.get("model"),
+                "digest": data.get("digest"),
+            }
+
+        pairs: list[dict[str, Any]] = []
+        matched = 0
+        compared = min(len(left), len(right))
+        for i in range(compared):
+            left_b, right_b = brief(left[i]), brief(right[i])
+            same = (
+                left_b["digest"] is not None
+                and left_b["digest"] == right_b["digest"]
+            )
+            matched += 1 if same else 0
+            pairs.append(
+                {
+                    "i": i,
+                    "turn_left": left_b["turn"],
+                    "turn_right": right_b["turn"],
+                    "digest_match": same,
+                    "bytes_left": left_b["bytes"],
+                    "bytes_right": right_b["bytes"],
+                    "model_left": left_b["model"],
+                    "model_right": right_b["model"],
+                }
+            )
+        for j in range(compared, len(left)):
+            left_b = brief(left[j])
+            pairs.append(
+                {
+                    "i": j,
+                    "turn_left": left_b["turn"],
+                    "turn_right": None,
+                    "digest_match": False,
+                    "bytes_left": left_b["bytes"],
+                    "bytes_right": None,
+                    "model_left": left_b["model"],
+                    "model_right": None,
+                    "missing": "right",
+                }
+            )
+        for j in range(compared, len(right)):
+            r = brief(right[j])
+            pairs.append(
+                {
+                    "i": j,
+                    "turn_left": None,
+                    "turn_right": r["turn"],
+                    "digest_match": False,
+                    "bytes_left": None,
+                    "bytes_right": r["bytes"],
+                    "model_left": None,
+                    "model_right": r["model"],
+                    "missing": "left",
+                }
+            )
+        return {
+            "left": session_id,
+            "right": other,
+            "pairs": pairs,
+            "matched": matched,
+            "compared": compared,
+        }
+
     def export_trace_otlp(self, session_id: str) -> dict[str, Any]:
         """Push the session's spans to the configured OTLP/HTTP-JSON endpoint.
         Double opt-in: the endpoint must be configured AND the export called."""
@@ -423,6 +681,8 @@ class SessionsMixin:
                 # (+ a computed current-item line); leads carry role/team_id — drives
                 # the sidebar's ONE expandable team entry.
                 "team": self._session_team_row(r),
+                # fork 血缘：{} = 非 fork 会话；供后续 UI 分支树使用
+                "fork": r.fork or {},
             }
             for r in self.session_store.list(workspace=ws)
             if not r.session_id.startswith("__")  # hide internal threads

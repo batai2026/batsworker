@@ -98,6 +98,7 @@ class ConversationStore:
             "ALTER TABLE sessions ADD COLUMN compaction TEXT",
             "ALTER TABLE sessions ADD COLUMN team TEXT",
             "ALTER TABLE sessions ADD COLUMN bindings TEXT",
+            "ALTER TABLE sessions ADD COLUMN fork TEXT",
         ):
             try:
                 self._conn.execute(ddl)
@@ -197,8 +198,8 @@ class ConversationStore:
             title = record.title or title_from(record.messages)
             self._conn.execute(
                 """
-                INSERT INTO sessions (session_id, workspace, model, mode, title, agent, n_msgs, messages, extra_roots, grants, compaction, team, bindings, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                INSERT INTO sessions (session_id, workspace, model, mode, title, agent, n_msgs, messages, extra_roots, grants, compaction, team, bindings, fork, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
                 ON CONFLICT(session_id) DO UPDATE SET
                     workspace = excluded.workspace, model = excluded.model, mode = excluded.mode,
                     title = COALESCE(sessions.title, excluded.title), agent = excluded.agent,
@@ -219,6 +220,10 @@ class ConversationStore:
                     json.dumps(record.compaction or {}),
                     json.dumps(record.team or {}),
                     json.dumps(record.bindings or {}),
+                    # fork 血缘只在 fork 创建时写入一次（新会话首行 INSERT）；
+                    # UPDATE 不更新该列——与 team/bindings 同理，每 turn 的 save 重建
+                    # record 不带 fork，若让重建获胜会清空血缘。
+                    json.dumps(record.fork or {}),
                     touch,
                 ),
             )
@@ -265,6 +270,7 @@ class ConversationStore:
             bindings=_load_grants(
                 row["bindings"] if "bindings" in row.keys() else None
             ),
+            fork=_load_grants(row["fork"] if "fork" in row.keys() else None),
         )
 
     def set_team(self, session_id: str, team: dict) -> None:
@@ -335,6 +341,7 @@ class ConversationStore:
                 origin=r["origin"],
                 origin_label=r["origin_label"],
                 team=_load_grants(r["team"] if "team" in r.keys() else None),
+                fork=_load_grants(r["fork"] if "fork" in r.keys() else None),
             )
             for r in rows
         ]

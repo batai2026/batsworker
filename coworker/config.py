@@ -116,6 +116,12 @@ class Config:
     # the strong model when complexity warrants it. None = always use the
     # session model (current behavior). User-global only.
     fast_model: Optional[str] = None
+    # Turn ledger (runtime trajectory): a local, append-only metadata log per
+    # session. It records digests/counts only — never message bodies, argument
+    # values, or tool results — and is on by default. User-global only so a
+    # cloned repo cannot turn the ledger off.
+    trajectory_enabled: bool = True
+    trajectory_max_records: int = 5000
 
 
 _FIELDS = {
@@ -142,6 +148,8 @@ _FIELDS = {
     "cloud_client_id",
     "cloud_audience",
     "cloud_relay_ws_url",
+    "trajectory_enabled",
+    "trajectory_max_records",
 }
 
 # These fields change what consequential actions can run without a prompt, so the normal
@@ -168,8 +176,8 @@ _GLOBAL_ONLY_FIELDS = {
     "sandbox_openshell_prefix",
     "reviewer_model",
     "fast_model",
-    "reviewer_model",
-    "fast_model",
+    "trajectory_enabled",
+    "trajectory_max_records",
 }
 _WORKSPACE_FIELDS = _FIELDS - _GLOBAL_ONLY_FIELDS
 

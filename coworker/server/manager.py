@@ -139,6 +139,9 @@ class SessionManager(
         # history). See coworker/checkpoints.py.
         self.data_dir = base
         self.trace_store = TraceStore(base / "traces.db")
+        # Turn ledger (trajectory.py): lazily built on first attach/read so config
+        # (trajectory_max_records) is only read once per manager.
+        self._trajectory_store_obj = None
         self.budget_store = BudgetStore(base / "budget.json")
         # Sessions whose workspace was promoted mid-turn (workspace-scratch-design.md §5):
         # evicted from the engine cache at the next mark_idle so the following turn
@@ -150,6 +153,8 @@ class SessionManager(
         # Sessions with an auto-title LLM call in flight (FB-010) — one call at a time.
         self._autotitle_inflight: set[str] = set()
         self._autotitle_tasks: set[asyncio.Task] = set()
+        # 后台 replay turn 的 task 引用（防 GC，同 _autotitle_tasks 模式）
+        self._replay_tasks: set[asyncio.Task] = set()
         self._autotitle_attempts: dict[str, int] = {}
         # Opener-count signature of the last attempt: titling fires at TURN START (owner
         # catch 2026-08-24 — waiting for an agentic turn to COMPLETE left sessions
@@ -485,6 +490,31 @@ class SessionManager(
             from ..observability import SessionTracer
 
             engine.traces = SessionTracer(self.trace_store, session_id)
+        # Turn ledger (trajectory.py): same attach-post-construction pattern. The
+        # recorder is metadata-only and best-effort; `trajectory_enabled=false`
+        # (user-global config) leaves the engine without one.
+        if getattr(engine, "trajectory", None) is None:
+            from ..config import load_config
+
+            if load_config().trajectory_enabled:
+                from ..trajectory import SessionTrajectory
+
+                engine.trajectory = SessionTrajectory(
+                    self._trajectory_store(), session_id
+                )
+
+    def _trajectory_store(self):
+        """Lazy TrajectoryStore bound to <data-dir>/trajectory (config + cap read once)."""
+        if self._trajectory_store_obj is None:
+            from ..config import load_config
+            from ..trajectory import TrajectoryStore
+
+            cfg = load_config()
+            self._trajectory_store_obj = TrajectoryStore(
+                self.data_dir / "trajectory",
+                max_records=int(cfg.trajectory_max_records),
+            )
+        return self._trajectory_store_obj
 
     def _event_context(self) -> dict[str, Any]:
         """Readers standing-goal triggers evaluate against — local stores only

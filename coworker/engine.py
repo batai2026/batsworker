@@ -25,6 +25,7 @@ from . import compaction as _compaction
 from . import provenance
 from . import session_facts
 from . import toolchain as _toolchain
+from . import trajectory as _trajectory
 from .events import Event, EventType
 from .risk import WRITE_TOOLS
 
@@ -389,6 +390,18 @@ class TurnEngine:
         self._cancel.clear()
         if self.session_facts is not None:
             self.session_facts.begin_turn()
+        tj = getattr(self, "trajectory", None)
+        if tj is not None:
+            try:
+                tj.begin_turn(
+                    mode="user",
+                    input=user_input,
+                    has_source=source is not None,
+                    has_display=display is not None,
+                    message_count=len(self.messages),
+                )
+            except Exception:
+                pass  # the ledger must never break a turn
         cp = getattr(self, "checkpoints", None)
         if cp is not None:
             try:
@@ -411,8 +424,11 @@ class TurnEngine:
         if display is not None:
             data["display"] = display
         yield Event(EventType.TURN_START, data)
+        status = "ok"
         try:
             async for event in self._loop():
+                if event.type is EventType.TURN_END:
+                    status = str(event.data.get("status") or "ok")
                 yield event
         finally:
             cp = getattr(self, "checkpoints", None)
@@ -428,6 +444,12 @@ class TurnEngine:
                 except Exception:
                     pass
                 self._turn_span = None
+            tj = getattr(self, "trajectory", None)
+            if tj is not None:
+                try:
+                    tj.end_turn(status=status)
+                except Exception:
+                    pass
 
     def switch_model(self, model: str) -> Optional[str]:
         """Rebind the session's model mid-conversation (roadmap item 3). History is
@@ -493,6 +515,7 @@ class TurnEngine:
             notice["text"] = text
         notice.update({k: v for k, v in fields.items() if v is not None})
         self.messages.append(notice)
+        self._traj("notice", kind=kind, text=text, **fields)
 
     async def retry(self) -> AsyncIterator[Event]:
         """Re-run the model loop after a provider error — no new user message; the failed
@@ -876,6 +899,30 @@ class TurnEngine:
             self.model_settings,
         )
         provider = self.provider
+        # Turn ledger: a content-free fingerprint of the exact payload this call sends —
+        # model id, message digest/size/role counts, tool names, settings KEYS only.
+        try:
+            self._traj(
+                "model_request",
+                **_trajectory.outbound_snapshot(
+                    messages,
+                    model=model,
+                    tool_names=[
+                        str((schema.get("function") or {}).get("name") or "")
+                        for schema in (tools or [])
+                    ],
+                    settings_keys=sorted(settings.keys()),
+                ),
+            )
+            context_text = getattr(self, "_outbound_context", "") or ""
+            if context_text:
+                self._traj(
+                    "context_injection",
+                    chars=len(context_text),
+                    digest=_trajectory.text_digest(context_text),
+                )
+        except Exception:
+            pass
 
         def produce():
             try:
@@ -1051,6 +1098,13 @@ class TurnEngine:
             )
         self.messages.append(_tool_error_message(tool_call, reason))
         self._audit(tool_call, stage="finished", status="error", reason=reason)
+        self._traj(
+            "tool_result",
+            name=tool_call.name,
+            call_id=tool_call.id,
+            status="error",
+            reason="arguments_unparsed",
+        )
         return Event(
             EventType.TOOL_FINISHED,
             {"name": tool_call.name, "status": "error", "reason": reason},
@@ -1063,6 +1117,13 @@ class TurnEngine:
         self.messages.append(_tool_error_message(tool_call, "interrupted by user"))
         self._audit(
             tool_call, stage="finished", status="interrupted", reason="user stop"
+        )
+        self._traj(
+            "tool_result",
+            name=tool_call.name,
+            call_id=tool_call.id,
+            status="interrupted",
+            reason="stopped",
         )
         return Event(
             EventType.TOOL_FINISHED,
@@ -1496,6 +1557,13 @@ class TurnEngine:
                     status="denied",
                     reason=f"denied by reviewer: {verdict.reason}",
                 )
+                self._traj(
+                    "tool_result",
+                    name=tool_call.name,
+                    call_id=tool_call.id,
+                    status="denied",
+                    reason="blocked by the safety reviewer",
+                )
                 yield False
                 return
             # "unsure" falls through to today's card — the human decides.
@@ -1551,6 +1619,12 @@ class TurnEngine:
                 reason=decision.reason,
                 call_id=tool_call.id,
             )
+            self._traj(
+                "approval_requested",
+                name=tool_call.name,
+                call_id=tool_call.id,
+                reason=decision.reason,
+            )
             outcome = await self._interruptible(
                 self.approver(
                     PermissionRequest(
@@ -1581,6 +1655,13 @@ class TurnEngine:
                     approval=outcome.value,
                     reason=reason,
                 )
+                self._traj(
+                    "approval_resolved",
+                    name=tool_call.name,
+                    call_id=tool_call.id,
+                    status="denied",
+                    outcome=outcome.value,
+                )
             else:
                 if outcome is ApprovalOutcome.ALWAYS_TOOL:
                     self.permissions.allow_tool_for_session(tool_call.name)
@@ -1608,6 +1689,13 @@ class TurnEngine:
                     approval=outcome.value,
                     reason=reason,
                 )
+                self._traj(
+                    "approval_resolved",
+                    name=tool_call.name,
+                    call_id=tool_call.id,
+                    status="approved",
+                    outcome=outcome.value,
+                )
 
         if not allowed:
             if spec is None:
@@ -1626,6 +1714,13 @@ class TurnEngine:
                 {"name": tool_call.name, "status": "denied", "reason": reason},
             )
             self._audit(tool_call, stage="finished", status="denied", reason=reason)
+            self._traj(
+                "tool_result",
+                name=tool_call.name,
+                call_id=tool_call.id,
+                status="denied",
+                reason=reason,
+            )
             yield False
             return
 
@@ -1636,6 +1731,13 @@ class TurnEngine:
             yield Event(
                 EventType.TOOL_FINISHED,
                 {"name": tool_call.name, "status": "error", "reason": "unknown tool"},
+            )
+            self._traj(
+                "tool_result",
+                name=tool_call.name,
+                call_id=tool_call.id,
+                status="error",
+                reason="unknown tool",
             )
             yield False
             return
@@ -1676,10 +1778,28 @@ class TurnEngine:
             except Exception:
                 span_id = None
         try:
+            self._traj(
+                "tool_call",
+                name=tool_call.name,
+                call_id=tool_call.id,
+                argument_keys=sorted((tool_call.arguments or {}).keys()),
+                arguments_digest=_trajectory.value_digest(tool_call.arguments),
+                arguments_chars=_trajectory.json_size(tool_call.arguments),
+            )
             result = self.registry.execute(tool_call.name, tool_call.arguments)
         except Exception as exc:
             duration = int((time.monotonic() - started) * 1000)
             self._tool_spans[tool_call.id] = duration
+            self._traj(
+                "tool_result",
+                name=tool_call.name,
+                call_id=tool_call.id,
+                status="error",
+                duration_ms=duration,
+                result_digest=_trajectory.text_digest(str(exc)),
+                result_chars=len(str(exc)),
+                error_type=type(exc).__name__,
+            )
             if entry is not None:
                 try:
                     cp.discard(entry)
@@ -1693,6 +1813,15 @@ class TurnEngine:
             return {"error": str(exc), "error_type": type(exc).__name__}, "error"
         duration = int((time.monotonic() - started) * 1000)
         self._tool_spans[tool_call.id] = duration
+        self._traj(
+            "tool_result",
+            name=tool_call.name,
+            call_id=tool_call.id,
+            status="ok",
+            duration_ms=duration,
+            result_digest=_trajectory.value_digest(result),
+            result_chars=_trajectory.json_size(result),
+        )
         if entry is not None:
             try:
                 cp.note_write(entry)
@@ -2310,6 +2439,17 @@ class TurnEngine:
             self.messages.append(message)
         self._steering = []
 
+    def _traj(self, event_kind: str, **data: Any) -> None:
+        """Append one turn-ledger record. Best-effort by contract: the ledger must
+        never throw into a turn (the store also swallows, this is the outer guard)."""
+        trajectory = getattr(self, "trajectory", None)
+        if trajectory is None:
+            return
+        try:
+            trajectory.record(event_kind, **data)
+        except Exception:
+            pass
+
     def _outbound_messages(self) -> list[dict[str, Any]]:
         """`self.messages` prepared for the provider. The SOLE provider feed (see `_astream`).
 
@@ -2405,6 +2545,10 @@ class TurnEngine:
         context = (
             self.context_provider() if self.context_provider is not None else ""
         ) or ""
+        # `_astream` reads this to record the ledger's context_injection event (the
+        # `_compaction_due` probe also calls this helper, so recording happens only
+        # where an actual provider request is assembled).
+        self._outbound_context = context
         if not context:
             return out
         block = f"\n\n<system-context>\n{context}\n</system-context>"

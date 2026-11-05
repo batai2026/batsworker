@@ -44,3 +44,6 @@ class SessionRecord:
     # lead_session, space}. Leads gain their entry when the staffing gate creates the
     # team. Drives tool binding (board actor identity) + the sidebar's expandable entry.
     team: dict[str, Any] = field(default_factory=dict)
+    # 会话分叉血缘（fork/replay）：{} = 非 fork 会话。
+    # {"from_session": 源会话 id, "from_turn": int | None, "cut_messages": int}
+    fork: dict[str, Any] = field(default_factory=dict)

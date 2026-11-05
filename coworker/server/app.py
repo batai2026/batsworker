@@ -835,6 +835,58 @@ def create_app(manager: SessionManager) -> FastAPI:
     def session_timeline(session_id: str, limit: int = 500) -> dict[str, Any]:
         return {"spans": manager.session_timeline(session_id, limit=limit)}
 
+    # Turn ledger (coworker/trajectory.py): append-only, redacted metadata events.
+    @app.get("/v1/sessions/{session_id}/trajectory")
+    def session_trajectory(
+        session_id: str, limit: int = 500, since_seq: int = 0
+    ) -> dict[str, Any]:
+        return manager.session_trajectory(session_id, limit=limit, since_seq=since_seq)
+
+    # Session fork / replay（建议路线 P0-2）：turn 边界复制会话、后台重跑输入、轨迹对比。
+    # 错误按 manager 返回的 status/detail 映射 HTTP 状态码（400/403/404/409）。
+    def _fork_error(result: dict[str, Any]) -> JSONResponse:
+        return JSONResponse(
+            {"detail": result.get("detail", "fork/replay failed")},
+            status_code=int(result.get("status") or 400),
+        )
+
+    @app.post("/v1/sessions/{session_id}/fork")
+    def session_fork(session_id: str, body: Optional[dict] = None) -> Any:
+        body = body or {}
+        turn = body.get("turn")
+        result = manager.fork_session(
+            session_id, turn=int(turn) if turn is not None else None
+        )
+        if not result.get("ok"):
+            return _fork_error(result)
+        return result
+
+    @app.post("/v1/sessions/{session_id}/replay")
+    async def session_replay(session_id: str, body: Optional[dict] = None) -> Any:
+        body = body or {}
+        replay_input = body.get("input")
+        result = await manager.replay_session(
+            session_id,
+            input=str(replay_input) if replay_input is not None else None,
+        )
+        if not result.get("ok"):
+            return _fork_error(result)
+        return JSONResponse(result, status_code=202)
+
+    @app.get("/v1/sessions/{session_id}/trajectory/diff")
+    def session_trajectory_diff(
+        session_id: str,
+        other: str,
+        from_turn: int = 1,
+        other_from_turn: int = 1,
+    ) -> dict[str, Any]:
+        return manager.trajectory_diff(
+            session_id,
+            other,
+            from_turn=from_turn,
+            other_from_turn=other_from_turn,
+        )
+
     @app.post("/v1/observability/export")
     def observability_export(body: dict) -> dict[str, Any]:
         return manager.export_trace_otlp(str((body or {}).get("session_id", "")))
