@@ -75,6 +75,39 @@ def capability_diff(old: PluginManifest, new: PluginManifest) -> dict[str, Any]:
     }
 
 
+def permission_diff(old: PluginManifest, new: PluginManifest) -> dict[str, Any]:
+    """比较两版 manifest 的权限语义，扩大（widened）→ 需要重新 consent。
+
+    能力集对 connector/MCP 恒为 ``connector:<name>`` / ``mcp:<name>``，所以权限字段
+    才是更新时的真实风险面（关闭审批、放开工具 allowlist、开启入站）。
+    """
+    old_p, new_p = old.permissions, new.permissions
+    widened: list[str] = []
+
+    if old_p.get("requires_approval") is True and new_p.get("requires_approval") is False:
+        widened.append("requires_approval: true -> false")
+
+    old_inc, new_inc = old_p.get("include_tools"), new_p.get("include_tools")
+    if old_inc is not None:
+        if new_inc is None:
+            widened.append("include_tools: allowlist -> all")
+        else:
+            added = sorted(set(new_inc) - set(old_inc))
+            if added:
+                widened.append(f"include_tools added: {', '.join(added)}")
+
+    old_exc, new_exc = old_p.get("exclude_tools"), new_p.get("exclude_tools")
+    if old_exc is not None:
+        removed = sorted(set(old_exc) - set(new_exc or []))
+        if removed:
+            widened.append(f"exclude_tools removed: {', '.join(removed)}")
+
+    if old_p.get("two_way") is False and new_p.get("two_way") is True:
+        widened.append("two_way: false -> true")
+
+    return {"widened": widened}
+
+
 def install_payload(result: dict[str, Any]) -> dict[str, Any]:
     """Strip the non-JSON ``manifest`` from a lifecycle result for REST responses."""
     return {k: v for k, v in result.items() if k != "manifest"}

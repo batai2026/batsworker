@@ -355,18 +355,20 @@ class McpMixin:
             commit=True,
             commit_payload=(name, config),
         )
-        return {"ok": True, "name": name, "consent": install_payload(consent)}
+        payload = install_payload(consent)
+        return {"ok": True, "name": name, "consent": payload}
 
-    def patch_mcp(self, name: str, changes: dict[str, Any]) -> dict[str, Any]:
+    def patch_mcp(
+        self, name: str, changes: dict[str, Any], *, confirm: bool = False
+    ) -> dict[str, Any]:
         from ..mcp.config import parse_server
         from ..plugins import lifecycle
         from ..plugins.consent import install_payload
         from ..plugins.manifest import KIND_MCP
 
         old = read_global().get(name)
-        ok = patch_global_server(name, changes)
-        if not ok or old is None:
-            return {"ok": ok, "name": name}
+        if old is None:
+            return {"ok": False, "name": name}
         merged = {**old, **changes}
         consent = lifecycle.update(
             KIND_MCP,
@@ -374,7 +376,17 @@ class McpMixin:
             existing_native=parse_server(name, old),
             commit=False,
         )
-        return {"ok": True, "name": name, "consent": install_payload(consent)}
+        payload = install_payload(consent)
+        if consent["permission_diff"]["widened"] and not confirm:
+            return {
+                "ok": False,
+                "status": 409,
+                "name": name,
+                "requires_consent": True,
+                "consent": payload,
+            }
+        patch_global_server(name, changes)
+        return {"ok": True, "name": name, "consent": payload}
 
     def delete_mcp(self, name: str) -> dict[str, Any]:
         ok = delete_global_server(name)

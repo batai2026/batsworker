@@ -29,10 +29,16 @@ class MCPAdapter:
         return frozenset({f"mcp:{native.name}"})
 
     def permissions(self, native: MCPServerDef) -> dict[str, Any]:
+        # Preserve None (= no filter / all tools) — coercing to [] would lose the
+        # allowlist-vs-all distinction that permission_diff relies on.
         return {
             "requires_approval": native.requires_approval,
-            "include_tools": list(native.include_tools or []),
-            "exclude_tools": list(native.exclude_tools or []),
+            "include_tools": (
+                None if native.include_tools is None else list(native.include_tools)
+            ),
+            "exclude_tools": (
+                None if native.exclude_tools is None else list(native.exclude_tools)
+            ),
             "transport": native.transport,
             "auth": native.auth,
         }

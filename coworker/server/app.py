@@ -1422,8 +1422,15 @@ def create_app(manager: SessionManager) -> FastAPI:
         return manager.add_mcp(name, config)
 
     @app.patch("/v1/mcp/{name}")
-    def mcp_patch(name: str, body: dict) -> dict[str, Any]:
-        return manager.patch_mcp(name, body or {})
+    def mcp_patch(name: str, body: dict) -> Any:
+        body = dict(body or {})
+        # consent v2: a permission widening needs an explicit re-consent; `confirm`
+        # is a request control, never persisted into mcp.json.
+        confirm = bool(body.pop("confirm", False))
+        result = manager.patch_mcp(name, body, confirm=confirm)
+        if result.get("status"):
+            return JSONResponse(result, status_code=result["status"])
+        return result
 
     @app.delete("/v1/mcp/{name}")
     def mcp_delete(name: str) -> dict[str, Any]:

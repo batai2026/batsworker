@@ -26,7 +26,7 @@ from .adapters import (
     PersonaAdapter,
     SkillAdapter,
 )
-from .consent import capability_diff, consent_summary
+from .consent import capability_diff, consent_summary, permission_diff
 from .manifest import (
     KIND_CONNECTOR,
     KIND_MCP,
@@ -109,22 +109,26 @@ def update(
     """统一更新入口。
 
     - 若提供 existing_native，则做 capability_set diff；grew 非空 → requires_consent=True。
+      同时比较权限语义（permission_diff），widened 非空同样需要 consent。
     - 无 existing_native（无法比对）→ 保守 requires_consent=True。
     - commit_payload 语义同 install。
     """
     pm = _to_manifest(kind, native, source_dir, expected_pubkey)
     diff: Optional[dict] = None
+    perm: Optional[dict] = None
     requires_consent = True
     if existing_native is not None:
         old_pm = _adapter(kind).to_manifest(existing_native)
         diff = capability_diff(old_pm, pm)
-        requires_consent = bool(diff["grew"])
+        perm = permission_diff(old_pm, pm)
+        requires_consent = bool(diff["grew"] or perm["widened"])
     if commit:
         _commit_install(kind, commit_payload if commit_payload is not None else native, store)
     return {
         **consent_summary(pm),
         "requires_consent": requires_consent,
         "diff": diff,
+        "permission_diff": perm,
         "manifest": pm,
     }
 
