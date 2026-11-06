@@ -7,4 +7,4 @@
 - [x] T5 新增 `tests/test_harness_registry.py`（四档 golden、来源/提示、自定义 persona 派生、resolve 失败、stub 跑通）
 - [x] T6 调整 `tests/test_eval_matrix.py`（code-mode 提示断言改为 manifest 语义）
 - [x] T7 `ruff check coworker tests` + 目标用例回归（33 passed）
-- [ ] T8 全量回归（基线 2126 passed / 9 skipped）+ 提交
+- [x] T8 全量回归（2132 passed / 9 skipped）+ 提交
