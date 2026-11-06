@@ -79,7 +79,10 @@ def test_runs_are_declared_with_minimal_and_creator():
 def test_code_mode_harness_collapses_to_exec_slot():
     cm = HARNESSES["code-mode"]
     assert cm.capabilities == ("code_mode",)  # 工具面坍缩：模型只见 exec
-    assert "```python" in cm.system_prompt  # 单一代码块输出协议
+    # 提示取自内置 manifest 正文（单一来源），保留单程序编排协议。
+    assert "ONE Python program" in cm.system_prompt
+    assert "exec" in cm.system_prompt
+    assert cm.source == "manifest"
 
 
 @pytest.mark.asyncio

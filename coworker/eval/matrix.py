@@ -26,10 +26,10 @@ from typing import Any, Callable, Optional
 
 from ..agent import build_engine
 from ..agents.base import Agent
-from ..agents.code import CODE_INSTRUCTIONS
 from ..attachments import content_to_text
 from ..catalog import expand
 from ..permissions import Mode
+from ..personas.harness import HarnessSpec, builtin_specs, installed_specs
 from ..providers import (
     AssistantTurn,
     ModelCapabilities,
@@ -38,75 +38,10 @@ from ..providers import (
 from ..secrets import state_dir
 from ..trajectory import SessionTrajectory, TrajectoryStore
 
-# 最小 harness 的系统提示：只讲工具与验证，不给额外策略，避免提示本身污染模型对比。
-_MINIMAL_PROMPT = (
-    "You are a minimal coding harness: shell plus file editing, nothing else.\n"
-    "- Read before you edit: use read_file and grep to see the current state.\n"
-    "- Make the smallest change that satisfies the request.\n"
-    "- After changing something, run the narrowest command that verifies it.\n"
-    "- Report what you changed with path:line references."
-)
-
-_CREATOR_PROMPT = (
-    "You create and debug OpenWorker extensions: personas (coworkers), skills, and "
-    "connector plugins. Inspect existing bundles and the closed capability catalog first, "
-    "write a complete bundle, then preview its consent summary before installing. Never "
-    "widen your own authority (no risk overrides, no trust edits)."
-)
-
-# code-mode 试验 harness：与 minimal 同槽位，差异只在提示与输出协议
-# （工具以代码 API 呈现、要求单一代码块编排）。引擎不变，代码不被真正执行。
-_CODE_MODE_PROMPT = (
-    "You orchestrate work by writing code, not by calling tools one at a time.\n"
-    "Code API (call these from inside your program):\n"
-    "- read_file(path) -> str                       # line-numbered file read\n"
-    "- write_file(path, content) -> None            # whole-file write\n"
-    "- grep(pattern, path?) -> list[str]            # ripgrep search\n"
-    "- run_shell(cmd) -> {exit_code, stdout, stderr}\n"
-    "Rules:\n"
-    "- Do the work in ONE fenced ```python code block; combine reads, transforms,\n"
-    "  edits, and verification in that single program.\n"
-    "- Outside the block, only state the result — no second block, no narration\n"
-    "  of intermediate steps.\n"
-    "- print() only what the user needs to see; keep intermediate data inside\n"
-    "  the program.\n"
-    "- If execution fails, stderr comes back as a tool error: fix the code and\n"
-    "  retry at most twice, then report the blocker."
-)
-
-
-@dataclass(frozen=True)
-class HarnessSpec:
-    """一个 harness = 能力槽集合 + 系统提示 + 权限模式。"""
-
-    name: str
-    capabilities: tuple[str, ...]
-    system_prompt: str
-    mode: str = "interactive"
-
-
-HARNESSES: dict[str, HarnessSpec] = {
-    "minimal": HarnessSpec(
-        name="minimal",
-        capabilities=("code_files", "shell"),
-        system_prompt=_MINIMAL_PROMPT,
-    ),
-    "code": HarnessSpec(
-        name="code",
-        capabilities=("code_files", "git", "search", "shell", "todo"),
-        system_prompt=CODE_INSTRUCTIONS,
-    ),
-    "creator": HarnessSpec(
-        name="creator",
-        capabilities=("code_files", "search", "shell", "todo"),
-        system_prompt=_CREATOR_PROMPT,
-    ),
-    "code-mode": HarnessSpec(
-        name="code-mode",
-        capabilities=("code_mode",),
-        system_prompt=_CODE_MODE_PROMPT,
-    ),
-}
+# harness 定义只有一份来源：persona manifest（code 取代码内建定义）。
+# 这里预展开四个内置档以保持既有 CLI/测试键名；用户装上的 persona 由
+# installed_specs() 在运行时合并。
+HARNESSES: dict[str, HarnessSpec] = builtin_specs()
 
 
 @dataclass
@@ -231,7 +166,7 @@ def _harness_agent(spec: HarnessSpec) -> Agent:
         title=spec.name,
         system_prompt=spec.system_prompt,
         tool_factory=lambda ctx: expand(caps, ctx),
-        requires_folder=True,
+        requires_folder=spec.requires_folder,
     )
 
 
@@ -353,9 +288,15 @@ async def run_matrix(
     auto_approve: bool = False,
     out_path: str | Path | None = None,
     work_dir: str | Path | None = None,
+    harness_specs: Optional[dict[str, HarnessSpec]] = None,
 ) -> dict[str, Any]:
-    """跑完整矩阵，返回（并可选写出）报告字典。"""
-    unknown = [n for n in harness_names if n not in HARNESSES]
+    """跑完整矩阵，返回（并可选写出）报告字典。
+
+    ``harness_specs`` 默认取 ``installed_specs()``（内置四档 + 用户已装 persona）；
+    测试可显式注入``{name: HarnessSpec}``。
+    """
+    specs = harness_specs if harness_specs is not None else installed_specs()
+    unknown = [n for n in harness_names if n not in specs]
     if unknown:
         raise ValueError(f"unknown harness: {', '.join(unknown)}")
     ws = Path(workspace).expanduser().resolve()
@@ -365,7 +306,7 @@ async def run_matrix(
 
     cells: list[dict[str, Any]] = []
     for name in harness_names:
-        spec = HARNESSES[name]
+        spec = specs[name]
         for model in models:
             cells.append(
                 await _run_cell(
@@ -385,6 +326,7 @@ async def run_matrix(
         "turns": [t.turn for t in turns],
         "models": models,
         "harnesses": harness_names,
+        "harness_sources": {n: specs[n].source for n in harness_names},
         "cells": cells,
     }
     if out_path is not None:
@@ -415,7 +357,7 @@ def main(argv: Optional[list[str]] = None) -> int:
     parser.add_argument(
         "--harnesses",
         default="minimal",
-        help="逗号分隔的 harness 名（minimal / code / creator）",
+        help="逗号分隔的 harness id（内置 minimal / code / creator / code-mode，或任意已装 persona）",
     )
     parser.add_argument("--workspace", default=".", help="评测用工作区（默认当前目录）")
     parser.add_argument("--stub", action="store_true", help="用确定性假 provider，不联网")
@@ -429,7 +371,8 @@ def main(argv: Optional[list[str]] = None) -> int:
     args = parser.parse_args(argv)
 
     harness_names = [h.strip() for h in args.harnesses.split(",") if h.strip()]
-    bad = [h for h in harness_names if h not in HARNESSES]
+    specs = installed_specs()
+    bad = [h for h in harness_names if h not in specs]
     if bad:
         print(f"unknown harness: {', '.join(bad)}", file=sys.stderr)
         return 2
