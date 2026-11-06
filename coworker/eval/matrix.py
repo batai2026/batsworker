@@ -103,7 +103,7 @@ HARNESSES: dict[str, HarnessSpec] = {
     ),
     "code-mode": HarnessSpec(
         name="code-mode",
-        capabilities=("code_files", "shell"),
+        capabilities=("code_mode",),
         system_prompt=_CODE_MODE_PROMPT,
     ),
 }
@@ -298,6 +298,8 @@ async def _run_cell(
     session_id = f"eval-{spec.name}-{_slug(model)}-{uuid.uuid4().hex[:6]}"
     store = TrajectoryStore(work_dir)
     engine.trajectory = SessionTrajectory(store, session_id)
+    if engine.codemode is not None:
+        engine.codemode.trajectory = engine.trajectory
 
     per_turn: list[dict[str, Any]] = []
     error: Optional[str] = None

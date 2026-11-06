@@ -23,6 +23,8 @@ class AgentContext:
     # When None, tools fall back to the single `workspace` root. Held by reference so runtime
     # add/remove of folders is seen by the file tools built from it.
     roots: Optional[list] = None
+    # Code mode（codemode 包）：`code_mode` 能力槽创建，build_engine 装配后 bind。
+    codemode: Optional[Any] = None
 
 
 @dataclass

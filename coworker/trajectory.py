@@ -342,3 +342,21 @@ class SessionTrajectory:
             self.store.append(self.session_id, event_kind, data, state=self._state)
         except Exception:
             pass  # the ledger must never break a turn
+
+    def record_code_exec(
+        self,
+        code: str,
+        *,
+        sandboxed: bool,
+        bridge_calls: int,
+        exit_code: Any = None,
+    ) -> None:
+        """Code mode 审计：exec 的代码全文 + 沙箱标记 + 桥接调用计数。"""
+        self.record(
+            "code_exec",
+            code=code,
+            code_chars=len(code),
+            sandboxed=sandboxed,
+            bridge_calls=bridge_calls,
+            exit_code=exit_code,
+        )

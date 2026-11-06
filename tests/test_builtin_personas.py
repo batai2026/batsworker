@@ -72,3 +72,15 @@ def test_creator_preset_has_todo_and_search(tmp_path):
     assert {"read_file", "grep", "run_shell"} <= names
     assert a.requires_folder and a.subagents and not a.scheduling
 
+
+def test_code_mode_preset_collapses_to_exec(tmp_path):
+    """形态 B：code-mode 模型面只有 exec；文件/shell 坍缩进桥接白名单。"""
+    reg = PersonaRegistry()
+    a = reg.agent("code-mode")
+    ctx = _ctx(tmp_path)
+    assert _names(a, ctx) == {"exec"}
+    assert a.requires_folder and not a.subagents and not a.scheduling
+    assert not a.messaging and not a.connectors
+    hidden = {getattr(t, "__name__", "") for t in ctx.codemode.hidden_tools}
+    assert {"read_file", "write_file", "run_shell"} <= hidden
+

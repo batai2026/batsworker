@@ -49,7 +49,7 @@ def test_plugin_slots_lists_capabilities_and_four_kinds(manager):
 
     assert set(result["plugins"]) == {"persona", "skill", "connector", "mcp"}
     persona_ids = {p["id"] for p in result["plugins"]["persona"]}
-    assert {"cowork", "code", "minimal", "creator"} <= persona_ids
+    assert {"cowork", "code", "minimal", "creator", "code-mode"} <= persona_ids
     # 四类都走同一个 consent 形状。
     for rows in result["plugins"].values():
         for row in rows:

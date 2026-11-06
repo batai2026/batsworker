@@ -76,10 +76,9 @@ def test_runs_are_declared_with_minimal_and_creator():
     assert "todo" in HARNESSES["creator"].capabilities
 
 
-def test_code_mode_harness_shares_minimal_slots_but_own_prompt():
+def test_code_mode_harness_collapses_to_exec_slot():
     cm = HARNESSES["code-mode"]
-    assert cm.capabilities == HARNESSES["minimal"].capabilities
-    assert cm.system_prompt != HARNESSES["minimal"].system_prompt
+    assert cm.capabilities == ("code_mode",)  # 工具面坍缩：模型只见 exec
     assert "```python" in cm.system_prompt  # 单一代码块输出协议
 
 
@@ -99,8 +98,9 @@ async def test_run_matrix_stub_runs_code_mode(tmp_path):
     (turn,) = cell["turns"]
     assert turn["status"] == "ok"
     assert len(turn["digest"]) == 64
-    assert "read_file" in turn["tools"]  # 槽位与 minimal 一致
-    assert "grep" not in turn["tools"]
+    assert "exec" in turn["tools"]
+    assert "read_file" not in turn["tools"]  # 域工具坍缩进桥接，不再上模型面
+    assert "run_shell" not in turn["tools"]
 
 
 @pytest.mark.asyncio

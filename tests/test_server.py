@@ -66,7 +66,8 @@ def test_agents_and_memory_rest(tmp_path):
     names = [a["name"] for a in agents]
     assert names[0] == "cowork"
     assert set(names) == {
-        "cowork", "security", "cloud-posture", "dep-audit", "minimal", "creator",
+        "cowork", "security", "cloud-posture", "code-mode", "dep-audit", "minimal",
+        "creator",
     }
     assert "skills" in client.get("/v1/skills").json()  # catalog (may be empty)
 

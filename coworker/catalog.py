@@ -124,6 +124,23 @@ def _shell(context: AgentContext) -> list:
     return shell_tools(context.executor)  # run_shell + background task tools
 
 
+def _code_mode(context: AgentContext) -> list:
+    """Code mode: the model writes Python that runs in the sandbox; tools are called
+    through the approval-gated stdio bridge. Fails closed without a DockerExecutor.
+
+    Surface collapse: the session registry exposes only `exec`; the file/shell toolset
+    is built into the runtime's private bridge whitelist (callable, never model-facing).
+    """
+    from .codemode import CodeModeRuntime, exec_tool
+
+    if context.codemode is None:
+        context.codemode = CodeModeRuntime(
+            executor=context.executor,
+            hidden_tools=expand(("code_files", "shell"), context),
+        )
+    return [exec_tool(context.codemode)]
+
+
 def _todo(context: AgentContext) -> list:
     return todo_tools(context.todo)  # todo_write (drives the Progress panel)
 
@@ -207,6 +224,15 @@ _CAPS: list[Capability] = [
         build=_egress,
         requires=(),
         risk=(RiskClass.EGRESS,),
+    ),
+    Capability(
+        id="code_mode",
+        name="Code mode",
+        description="Model writes Python that orchestrates tools via an approval-gated "
+        "bridge inside the sandbox (fails closed without Docker).",
+        build=_code_mode,
+        requires=("workspace",),
+        risk=(RiskClass.EXEC, RiskClass.WRITE_LOCAL),
     ),
 ]
 

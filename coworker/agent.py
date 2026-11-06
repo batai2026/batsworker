@@ -610,6 +610,11 @@ def build_engine(
                 )
         return "\n\n".join(parts)
 
+    # Code mode（codemode 包）：registry 装配完成后注入 exec 的运行时依赖——
+    # 可桥接的工具白名单与该会话的审批门。approver=None 时引擎层本就 deny-all。
+    if context.codemode is not None:
+        context.codemode.bind(registry=registry, approver=approver)
+
     engine = TurnEngine(
         provider=provider,
         registry=registry,
@@ -635,6 +640,7 @@ def build_engine(
     )
     engine.executor = executor  # type: ignore[attr-defined]
     engine.todo = todo  # type: ignore[attr-defined]
+    engine.codemode = context.codemode  # type: ignore[attr-defined]  # None = 非 code-mode 会话
     engine.agent_name = agent.name  # type: ignore[attr-defined]
     engine.roots = root_list  # type: ignore[attr-defined]  # shared list; Slice C mutates in place
     # Session facts (spec Part 0 / §2.4): freeze the known world NOW, before the agent has

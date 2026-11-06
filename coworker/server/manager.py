@@ -504,6 +504,9 @@ class SessionManager(
                 engine.trajectory = SessionTrajectory(
                     self._trajectory_store(), session_id
                 )
+                cm = getattr(engine, "codemode", None)
+                if cm is not None:
+                    cm.trajectory = engine.trajectory
 
     def _trajectory_store(self):
         """Lazy TrajectoryStore bound to <data-dir>/trajectory (config + cap read once)."""
