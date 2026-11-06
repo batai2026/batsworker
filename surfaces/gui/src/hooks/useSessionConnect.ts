@@ -427,6 +427,13 @@ export function useSessionConnect(deps: SessionConnectDeps) {
             { kind: "notice", tone: "warn", text: d.error || t("That message was rejected.") },
           ]);
           break;
+        case "steering_queued":
+          // P2-9: the message joins the running turn at its next model request.
+          setItems((p) => [
+            ...p,
+            { kind: "notice", tone: "info", text: t("Queued — it applies at the next step.") },
+          ]);
+          break;
         case "turn_done":
           setRunning(false);
           setReviewerPaused(false); // the pause is scoped to the turn

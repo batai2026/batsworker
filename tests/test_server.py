@@ -355,6 +355,50 @@ def test_ws_simple_turn(tmp_path):
         assert "turn_end" in types
 
 
+def test_ws_queues_text_while_running(tmp_path, monkeypatch):
+    """P2-9: text sent mid-turn is queued (not rejected); attachments/skills are not."""
+    manager = SessionManager(workspace=tmp_path, provider=ScriptedProvider([]))
+    client = TestClient(create_app(manager))
+    monkeypatch.setattr(manager, "is_running", lambda sid: True)
+    queued = []
+    monkeypatch.setattr(
+        manager, "steer_session", lambda sid, text: queued.append((sid, text)) or True
+    )
+    with client.websocket_connect("/ws/session/s1?agent=cowork") as ws:
+        assert ws.receive_json()["type"] == "ready"
+        ws.send_json({"type": "user_message", "text": "also cover the edge case"})
+        evt = ws.receive_json()
+        assert evt["type"] == "steering_queued"
+        assert evt["data"]["text"] == "also cover the edge case"
+
+        ws.send_json(
+            {
+                "type": "user_message",
+                "text": "see the file",
+                "attachments": [{"kind": "text", "text": "payload"}],
+            }
+        )
+        rejected = ws.receive_json()
+        assert rejected["type"] == "input_rejected"
+        assert "text only" in rejected["data"]["error"]
+
+        ws.send_json({"type": "user_message", "text": "use the skill", "skill": "greet"})
+        rejected = ws.receive_json()
+        assert rejected["type"] == "input_rejected"
+        assert "starts a new turn" in rejected["data"]["error"]
+    assert queued == [("s1", "also cover the edge case")]
+
+
+def test_steer_session_requires_a_live_turn(tmp_path):
+    manager = SessionManager(workspace=tmp_path, provider=ScriptedProvider([]))
+    engine = manager.get_engine("s1", workspace=str(tmp_path), agent="cowork")
+    assert engine is not None
+    assert manager.steer_session("s1", "hi") is False  # idle: no live turn
+    manager.try_mark_running("s1")
+    assert manager.steer_session("s1", "hi") is True
+    assert engine._steering == [("hi", None)]
+
+
 def test_ws_rejects_oversized_message(tmp_path):
     from coworker.server import app as app_mod
     from coworker.attachments import MAX_ATTACHMENTS
@@ -456,11 +500,12 @@ def test_ws_allows_only_one_inflight_turn_per_session(tmp_path):
         while "turn_done" not in types:
             types.append(ws.receive_json()["type"])
 
-    assert "input_rejected" in types
+    assert "steering_queued" in types  # P2-9: text joins the live turn, no second run
     assert provider.max_active == 1
     engine = manager._engines["serialized"]
     user_messages = [m for m in engine.messages if m.get("role") == "user"]
-    assert [m["content"] for m in user_messages] == ["first"]
+    # The steered text rides into the same turn at its next model request.
+    assert [m["content"] for m in user_messages] == ["first", "second"]
 
 
 def test_ws_rate_limits_inbound_frames(tmp_path):

@@ -3034,6 +3034,33 @@ def create_app(manager: SessionManager) -> FastAPI:
                     if reject is not None:
                         await reject_input(reject)
                         continue
+                    # Soft steering (P2-9): a text message sent while this session is
+                    # running joins the live turn at its next model request instead of
+                    # being rejected. Attachments/skills start a new turn, and a pending
+                    # Inbox gate keeps its reply semantics (gate answers win).
+                    if manager.is_running(
+                        session_id
+                    ) and not manager.inbox.pending(session_id):
+                        if attachments:
+                            await reject_input(
+                                "Mid-turn steering supports text only — wait for this "
+                                "turn to finish before sending attachments."
+                            )
+                            continue
+                        if message.get("skill"):
+                            await reject_input(
+                                "Mid-turn steering supports text only — a skill starts "
+                                "a new turn."
+                            )
+                            continue
+                        if not text:
+                            await reject_input("Nothing to steer — the message is empty.")
+                            continue
+                        if manager.steer_session(session_id, text):
+                            await ws.send_json(
+                                {"type": "steering_queued", "data": {"text": text}}
+                            )
+                            continue
                     # The composer sends its visible model with every message — the FIRST
                     # one binds the session (race-proof across reconnects; see api.ts
                     # Session.userMessage), later ones may switch it (notice persisted).

@@ -19,6 +19,7 @@ export type EventType =
   | "turn_end"
   | "error"
   | "input_rejected"
+  | "steering_queued"
   | "interrupted"
   | "model_changed"
   | "mode_notice"

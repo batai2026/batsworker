@@ -388,6 +388,18 @@ class SessionsMixin:
     def mark_running(self, session_id: str) -> None:
         self._running_sessions.add(session_id)
 
+    def steer_session(self, session_id: str, text: str) -> bool:
+        """Queue a mid-turn user message into the live turn (soft steering, P2-9).
+
+        The engine injects it as a user message at its next model request boundary —
+        no tool call is interrupted. False when there is no live running turn.
+        """
+        engine = self.get_engine(session_id)
+        if engine is None or not self.is_running(session_id):
+            return False
+        engine.queue_steering(text)
+        return True
+
     def try_mark_running(self, session_id: str) -> bool:
         """Atomically claim an idle session for one turn on the server event loop."""
         if session_id in self._running_sessions:

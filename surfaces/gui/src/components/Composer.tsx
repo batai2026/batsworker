@@ -395,7 +395,6 @@ export function Composer(props: Props) {
     const t = (skill ? text.slice(skill.length + 1) : text).trim();
     if (
       (!t && attachments.length === 0 && !skill) ||
-      (props.running && !props.gateOpen) ||
       dictation?.recording ||
       dictationBusy
     )
@@ -764,29 +763,36 @@ export function Composer(props: Props) {
             </button>
           )}
 
-          {/* send / stop — a pending gate re-opens Send: the reply resolves it */}
-          {props.running && !props.gateOpen ? (
+          {/* send / stop — while a turn runs, Send queues a mid-turn steering note
+              (P2-9) and Stop still interrupts; a pending gate re-opens Send: the
+              reply resolves it */}
+          {props.running && !props.gateOpen && (
             <button className="btn danger" onClick={props.onInterrupt}>
               ⏹ {t("Stop")}
             </button>
-          ) : (
-            <button
-              className={
-                "w-7 h-7 rounded-full grid place-items-center shrink-0 transition-colors " +
-                (hasContent && props.connected && !dictation?.recording && !dictationBusy
-                  ? "bg-accent text-white hover:brightness-105"
-                  : "bg-paper border border-line text-faint")
-              }
-              onClick={submit}
-              disabled={!props.connected || !!dictation?.recording || !!dictationBusy}
-              title={needsModel ? t("Connect a model to send") : undefined}
-              aria-label={t("Send")}
-            >
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                <path d="M12 19V5M5 12l7-7 7 7" />
-              </svg>
-            </button>
           )}
+          <button
+            className={
+              "w-7 h-7 rounded-full grid place-items-center shrink-0 transition-colors " +
+              (hasContent && props.connected && !dictation?.recording && !dictationBusy
+                ? "bg-accent text-white hover:brightness-105"
+                : "bg-paper border border-line text-faint")
+            }
+            onClick={submit}
+            disabled={!props.connected || !!dictation?.recording || !!dictationBusy}
+            title={
+              needsModel
+                ? t("Connect a model to send")
+                : props.running && !props.gateOpen
+                  ? t("Send as steering (applies at the next step)")
+                  : undefined
+            }
+            aria-label={t("Send")}
+          >
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M12 19V5M5 12l7-7 7 7" />
+            </svg>
+          </button>
         </div>
       </div>
       <span className="sr-only" role="status" aria-live="polite">
