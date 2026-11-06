@@ -206,7 +206,7 @@ def commit_plugin(data: dict[str, Any]) -> None:
 
 def install_plugin(name: str) -> dict[str, Any]:
     """Install a marketplace plugin through the unified install pipeline."""
-    from ..plugins import lifecycle
+    from ..plugins import consent_audit, lifecycle
     from ..plugins.consent import install_payload
     from ..plugins.manifest import KIND_CONNECTOR
 
@@ -219,10 +219,15 @@ def install_plugin(name: str) -> dict[str, Any]:
             "error": f"a connector named '{name}' already exists in the registry",
         }
     consent = lifecycle.install(KIND_CONNECTOR, data, commit=True)
+    payload = install_payload(consent)
+    consent_audit.record(
+        kind=KIND_CONNECTOR, id=name, action="install", decision="accepted",
+        consent=payload,
+    )
     return {
         "ok": True,
         "plugin": _public_plugin(data),
-        "consent": install_payload(consent),
+        "consent": payload,
     }
 
 
@@ -240,6 +245,11 @@ def uninstall_plugin(name: str) -> dict[str, Any]:
     if removed or name in _BY_NAME:
         _BY_NAME.pop(name, None)
     remove_plugin_file(name)
+    from ..plugins import consent_audit
+
+    consent_audit.record(
+        kind="connector", id=name, action="uninstall", decision="accepted"
+    )
     return {"ok": True, "name": name}
 
 

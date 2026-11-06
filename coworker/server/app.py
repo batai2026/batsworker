@@ -2045,6 +2045,13 @@ def create_app(manager: SessionManager) -> FastAPI:
             )
         }
 
+    @app.get("/v1/plugins/audit")
+    def plugin_audit_list(limit: int = 100, id: str | None = None) -> dict[str, Any]:
+        """P2-10: install/uninstall/permission-change ledger (newest first)."""
+        from ..plugins import consent_audit
+
+        return {"events": consent_audit.read(limit=limit, id=id)}
+
     @app.get("/v1/browser/state")
     def browser_state_get() -> dict[str, Any]:
         return manager.browser_state()

@@ -345,7 +345,7 @@ class McpMixin:
 
     def add_mcp(self, name: str, config: dict[str, Any]) -> dict[str, Any]:
         from ..mcp.config import parse_server
-        from ..plugins import lifecycle
+        from ..plugins import consent_audit, lifecycle
         from ..plugins.consent import install_payload
         from ..plugins.manifest import KIND_MCP
 
@@ -356,13 +356,16 @@ class McpMixin:
             commit_payload=(name, config),
         )
         payload = install_payload(consent)
+        consent_audit.record(
+            kind=KIND_MCP, id=name, action="install", decision="accepted", consent=payload
+        )
         return {"ok": True, "name": name, "consent": payload}
 
     def patch_mcp(
         self, name: str, changes: dict[str, Any], *, confirm: bool = False
     ) -> dict[str, Any]:
         from ..mcp.config import parse_server
-        from ..plugins import lifecycle
+        from ..plugins import consent_audit, lifecycle
         from ..plugins.consent import install_payload
         from ..plugins.manifest import KIND_MCP
 
@@ -378,6 +381,10 @@ class McpMixin:
         )
         payload = install_payload(consent)
         if consent["permission_diff"]["widened"] and not confirm:
+            consent_audit.record(
+                kind=KIND_MCP, id=name, action="update", decision="denied",
+                consent=payload,
+            )
             return {
                 "ok": False,
                 "status": 409,
@@ -386,6 +393,9 @@ class McpMixin:
                 "consent": payload,
             }
         patch_global_server(name, changes)
+        consent_audit.record(
+            kind=KIND_MCP, id=name, action="update", decision="accepted", consent=payload
+        )
         return {"ok": True, "name": name, "consent": payload}
 
     def delete_mcp(self, name: str) -> dict[str, Any]:
@@ -411,6 +421,11 @@ class McpMixin:
             from ..mcp import oauth as mcp_oauth
 
             mcp_oauth.sign_out(name, self.secrets)
+            from ..plugins import consent_audit
+
+            consent_audit.record(
+                kind="mcp", id=name, action="uninstall", decision="accepted"
+            )
         return {"ok": ok, "name": name}
 
     async def mcp_tools(self, name: str) -> dict[str, Any]:
