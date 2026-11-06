@@ -344,12 +344,37 @@ class McpMixin:
         return {"ok": True, "had_tokens": removed}
 
     def add_mcp(self, name: str, config: dict[str, Any]) -> dict[str, Any]:
-        put_global_server(name, config)
-        return {"ok": True, "name": name}
+        from ..mcp.config import parse_server
+        from ..plugins import lifecycle
+        from ..plugins.consent import install_payload
+        from ..plugins.manifest import KIND_MCP
+
+        consent = lifecycle.install(
+            KIND_MCP,
+            parse_server(name, config),
+            commit=True,
+            commit_payload=(name, config),
+        )
+        return {"ok": True, "name": name, "consent": install_payload(consent)}
 
     def patch_mcp(self, name: str, changes: dict[str, Any]) -> dict[str, Any]:
+        from ..mcp.config import parse_server
+        from ..plugins import lifecycle
+        from ..plugins.consent import install_payload
+        from ..plugins.manifest import KIND_MCP
+
+        old = read_global().get(name)
         ok = patch_global_server(name, changes)
-        return {"ok": ok, "name": name}
+        if not ok or old is None:
+            return {"ok": ok, "name": name}
+        merged = {**old, **changes}
+        consent = lifecycle.update(
+            KIND_MCP,
+            parse_server(name, merged),
+            existing_native=parse_server(name, old),
+            commit=False,
+        )
+        return {"ok": True, "name": name, "consent": install_payload(consent)}
 
     def delete_mcp(self, name: str) -> dict[str, Any]:
         ok = delete_global_server(name)

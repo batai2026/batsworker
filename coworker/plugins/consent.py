@@ -75,6 +75,11 @@ def capability_diff(old: PluginManifest, new: PluginManifest) -> dict[str, Any]:
     }
 
 
+def install_payload(result: dict[str, Any]) -> dict[str, Any]:
+    """Strip the non-JSON ``manifest`` from a lifecycle result for REST responses."""
+    return {k: v for k, v in result.items() if k != "manifest"}
+
+
 # kind 名 → 中文标签（consent 卡片显示用）。
 KIND_LABELS = {
     KIND_PERSONA: "Coworker",

@@ -163,7 +163,7 @@ def _commit_install(kind: str, native: Any, store: Any) -> None:
         # native 是 create 的 kwargs dict。
         store.create(**native)
     elif kind == KIND_CONNECTOR:
-        marketplace.install_plugin(native)  # native 是 plugin name
+        marketplace.commit_plugin(native)  # native 是 plugin dict，已过 install 校验
     elif kind == KIND_MCP:
         # native 是 (name, config) 元组。
         name, config = native

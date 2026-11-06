@@ -86,6 +86,13 @@ def _parse(name: str, raw: dict[str, Any], secrets: SecretStore) -> MCPServerDef
     )
 
 
+def parse_server(
+    name: str, raw: dict[str, Any], *, secrets: Optional[SecretStore] = None
+) -> MCPServerDef:
+    """Parse one ``mcpServers`` entry (public wrapper for consent/install paths)."""
+    return _parse(name, raw, secrets or SecretStore())
+
+
 def load_mcp_servers(
     workspace: Optional[str | Path] = None,
     *,

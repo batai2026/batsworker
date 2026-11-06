@@ -130,9 +130,10 @@ class ConnectorsMixin:
         return install_plugin(name)
 
     def uninstall_connector_plugin(self, name: str) -> dict[str, Any]:
-        from ..connectors.marketplace import uninstall_plugin
+        from ..plugins import lifecycle
+        from ..plugins.manifest import KIND_CONNECTOR
 
-        return uninstall_plugin(name)
+        return {**lifecycle.uninstall(KIND_CONNECTOR, name), "name": name}
 
     # -- gateway + connector allow-list (inbound messaging) ---------------------
     def allow_user(

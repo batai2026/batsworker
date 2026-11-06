@@ -198,7 +198,18 @@ def _plugin_to_descriptor(data: dict[str, Any]) -> ConnectorDescriptor:
     )
 
 
+def commit_plugin(data: dict[str, Any]) -> None:
+    """Land an already-validated plugin (lifecycle's commit branch)."""
+    register_descriptor(_plugin_to_descriptor(data))
+    save_plugin(data)
+
+
 def install_plugin(name: str) -> dict[str, Any]:
+    """Install a marketplace plugin through the unified install pipeline."""
+    from ..plugins import lifecycle
+    from ..plugins.consent import install_payload
+    from ..plugins.manifest import KIND_CONNECTOR
+
     data = _plugin_data(name)
     if data is None:
         return {"ok": False, "error": f"unknown plugin: {name}"}
@@ -207,9 +218,12 @@ def install_plugin(name: str) -> dict[str, Any]:
             "ok": False,
             "error": f"a connector named '{name}' already exists in the registry",
         }
-    register_descriptor(_plugin_to_descriptor(data))
-    save_plugin(data)
-    return {"ok": True, "plugin": _public_plugin(data)}
+    consent = lifecycle.install(KIND_CONNECTOR, data, commit=True)
+    return {
+        "ok": True,
+        "plugin": _public_plugin(data),
+        "consent": install_payload(consent),
+    }
 
 
 def uninstall_plugin(name: str) -> dict[str, Any]:
