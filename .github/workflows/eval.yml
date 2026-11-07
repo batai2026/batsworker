@@ -1,0 +1,109 @@
+# Eval gate — the deterministic stub case runs on every push/PR; the real-model
+# matrix is manual (workflow_dispatch) so it can use repo secrets and budget.
+#
+# The stub case pins an EMPTY, non-git workspace plus an empty state dir: the
+# outbound payload embeds the workspace path, git status/commits, per-turn clock
+# and user-level skills/memories, so anything else makes bytes drift by noise.
+# Regenerate the baseline (after an intentional prompt/tool change) with the
+# command documented in docs/design/eval-and-replay.md.
+
+name: Eval
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      case:
+        description: "评测用例目录（capture 导出，含 messages.jsonl + baseline.json）"
+        required: true
+      models:
+        description: "逗号分隔的模型 id（如 openai:gpt-5.6-sol）"
+        required: true
+      harnesses:
+        description: "逗号分隔的 harness id"
+        required: false
+        default: minimal
+      max_bytes_ratio:
+        description: "允许的出站字节相对偏差"
+        required: false
+        default: "0.10"
+      check_baseline:
+        description: "基线漂移即失败（1=开启，0=仅参照）"
+        required: false
+        default: "1"
+
+jobs:
+  gate-stub:
+    if: github.event_name != 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    env:
+      COWORKER_STATE_DIR: ${{ runner.temp }}/eval-state
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+      - name: Golden-case gate (stub, no network)
+        run: |
+          mkdir -p "${{ runner.temp }}/eval-ws" "$COWORKER_STATE_DIR"
+          python -m coworker.eval.matrix \
+            --case evals/ci-case \
+            --stub \
+            --workspace "${{ runner.temp }}/eval-ws" \
+            --check-baseline \
+            --out "${{ runner.temp }}/eval-report.json"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: eval-report-stub
+          path: ${{ runner.temp }}/eval-report.json
+          if-no-files-found: ignore
+
+  matrix-real:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    env:
+      COWORKER_STATE_DIR: ${{ runner.temp }}/eval-state
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+      - name: Prepare case and workspace
+        run: |
+          test -f "${{ inputs.case }}/messages.jsonl" || {
+            echo "missing ${{ inputs.case }}/messages.jsonl — export it with coworker.eval.capture first"
+            exit 1
+          }
+          mkdir -p "${{ runner.temp }}/eval-ws" "$COWORKER_STATE_DIR"
+      - name: Real-model matrix
+        env:
+          CASE: ${{ inputs.case }}
+          MODELS: ${{ inputs.models }}
+          HARNESSES: ${{ inputs.harnesses }}
+          MAX_RATIO: ${{ inputs.max_bytes_ratio }}
+          GATE: ${{ inputs.check_baseline }}
+        run: |
+          args=(--case "$CASE" --models "$MODELS" --harnesses "$HARNESSES"
+                --workspace "${{ runner.temp }}/eval-ws"
+                --max-bytes-ratio "$MAX_RATIO"
+                --out "${{ runner.temp }}/eval-report.json")
+          if [ "$GATE" = "1" ]; then args+=(--check-baseline); fi
+          python -m coworker.eval.matrix "${args[@]}"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: eval-report-real
+          path: ${{ runner.temp }}/eval-report.json
+          if-no-files-found: ignore

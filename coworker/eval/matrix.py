@@ -520,6 +520,11 @@ def main(argv: Optional[list[str]] = None) -> int:
         default=DEFAULT_MAX_BYTES_RATIO,
         help=f"check-baseline 允许的出站字节相对偏差（默认 {DEFAULT_MAX_BYTES_RATIO}）",
     )
+    parser.add_argument(
+        "--write-baseline",
+        action="store_true",
+        help="用本次 --stub 运行重写 --case 的 baseline.json（刷新黄金基线，需单 cell）",
+    )
     args = parser.parse_args(argv)
 
     harness_names = [h.strip() for h in args.harnesses.split(",") if h.strip()]
@@ -545,6 +550,22 @@ def main(argv: Optional[list[str]] = None) -> int:
     if args.max_bytes_ratio < 0:
         print("--max-bytes-ratio must be >= 0", file=sys.stderr)
         return 2
+    if args.write_baseline:
+        if not args.case or not args.stub:
+            print("--write-baseline requires --case and --stub", file=sys.stderr)
+            return 2
+        if args.check_baseline:
+            print(
+                "--write-baseline and --check-baseline are mutually exclusive",
+                file=sys.stderr,
+            )
+            return 2
+        if len(models) * len(harness_names) != 1:
+            print(
+                "--write-baseline requires exactly one model × one harness",
+                file=sys.stderr,
+            )
+            return 2
 
     baseline: Optional[dict[str, Any]] = None
     if args.case:
@@ -592,6 +613,25 @@ def main(argv: Optional[list[str]] = None) -> int:
             out_path=args.out,
         )
     )
+    if args.write_baseline:
+        from .capture import BASELINE_FILE, baseline_from_cell
+
+        cell = report["cells"][0]
+        if cell.get("status") != "ok":
+            print(f"cell failed: {cell.get('error') or ''}", file=sys.stderr)
+            return 1
+        session_id = str((baseline or {}).get("session_id") or Path(args.case).name)
+        target = Path(args.case).expanduser() / BASELINE_FILE
+        target.write_text(
+            json.dumps(
+                baseline_from_cell(cell, session_id=session_id),
+                ensure_ascii=False,
+                indent=2,
+            ),
+            encoding="utf-8",
+        )
+        print(f"baseline written: {target} ({len(cell['turns'])} turns)")
+        return 0
     gate: Optional[dict[str, Any]] = None
     if baseline is not None:
         report["baseline"] = baseline

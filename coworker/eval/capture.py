@@ -83,6 +83,28 @@ def _baseline_turns(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
     ]
 
 
+def baseline_from_cell(cell: dict[str, Any], *, session_id: str = "") -> dict[str, Any]:
+    """把一次确定性 stub 跑的 matrix cell 转成 capture 基线结构。
+
+    供 `matrix --write-baseline` 刷新黄金用例（字段与 `_baseline_turns()` 一致）。
+    """
+    return {
+        "session_id": session_id,
+        "captured_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
+        "turns": [
+            {
+                "turn": int(turn.get("turn") or 0),
+                "model": str(turn.get("model") or ""),
+                "bytes": int(turn.get("bytes") or 0),
+                "requests": int(turn.get("requests") or 0),
+                "tool_calls": int(turn.get("tool_calls") or 0),
+                "tools": list(turn.get("tool_names") or []),
+            }
+            for turn in cell.get("turns") or []
+        ],
+    }
+
+
 def capture_case(
     session_id: str,
     out_dir: str | Path,

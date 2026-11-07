@@ -659,9 +659,18 @@ python -m coworker.eval.matrix --session <会话ID> --models ... --harnesses min
 | `--max-turns N` | 只重放前 N 轮 |
 | `--check-baseline` | 把基线对比变成门禁：任何漂移都让命令失败（需要配合 `--case`） |
 | `--max-bytes-ratio` | 门禁允许的出站字节相对偏差，默认 0.10（10%） |
+| `--write-baseline` | 用本次 `--stub` 运行重写用例的 `baseline.json`（刷新黄金基线；需同时给 `--case` 与 `--stub`，且只允许单格） |
 | `--out` | 报告 JSON 输出路径 |
 
 报告中每个「模型 × harness」格子都附带 `vs_baseline` 对比（逐轮的字节数差异与工具序列是否一致）。**默认基线只是参照，不会判定通过/失败**；加上 `--check-baseline` 后，工具序列不一致、字节偏差超阈值、基线缺轮或执行报错都会判为失败，命令以退出码 `3` 结束（退出码 `1` 仍表示矩阵执行本身有格报错，`2` 表示参数错误），可直接接入 CI。
+
+仓库自带一个确定性黄金用例 `evals/ci-case/`：`.github/workflows/eval.yml` 在每次 push / PR 用 `--stub --check-baseline` 跑它（漂移即失败），另有一个手动触发的 `workflow_dispatch` 任务用仓库密钥跑真实模型矩阵。有意修改系统提示、harness 或工具目录后，需要刷新黄金基线——**必须使用空的工作区与空的状态目录**，否则工作区绝对路径、git 状态、已装技能都会进入出站负载，造成假漂移：
+
+```powershell
+$env:COWORKER_STATE_DIR = "$env:TEMP\eval-ci-state"
+New-Item -ItemType Directory -Force "$env:TEMP\eval-ci-state", "$env:TEMP\eval-ci-ws" | Out-Null
+python -m coworker.eval.matrix --case evals\ci-case --stub --workspace "$env:TEMP\eval-ci-ws" --write-baseline
+```
 
 ### 20.3 分叉与回放（API）
 

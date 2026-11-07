@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+from pathlib import Path
 
 import pytest
 
@@ -412,3 +413,64 @@ def test_cli_check_baseline_drift_exit_code(recorded_session, tmp_path, capsys):
     kinds = {f["kind"] for f in report["baseline_check"]["failures"]}
     assert "tool_drift" in kinds
     assert "failure(s)" in capsys.readouterr().err
+
+
+# -- 黄金基线刷新（--write-baseline）与 CI 用例 ---------------------------------
+
+
+def test_cli_write_baseline_refreshes_case(recorded_session, tmp_path):
+    conv_dir, traj_dir = recorded_session
+    out = tmp_path / "case"
+    capture_case("s1", out, conv_dir=conv_dir, trajectory_dir=traj_dir)
+    rc = matrix.main(
+        ["--case", str(out), "--stub", "--workspace", str(tmp_path), "--write-baseline"]
+    )
+    assert rc == 0
+    baseline = json.loads((out / BASELINE_FILE).read_text(encoding="utf-8"))
+    assert baseline["session_id"] == "s1"
+    assert [t["turn"] for t in baseline["turns"]] == [1, 2]
+    # stub 不发起 tool_call → 重写后的基线工具序列为空
+    assert [t["tools"] for t in baseline["turns"]] == [[], []]
+    assert all(t["requests"] == 1 for t in baseline["turns"])
+    # 重写后同一命令即可通过门禁
+    assert (
+        matrix.main(
+            ["--case", str(out), "--stub", "--workspace", str(tmp_path), "--check-baseline"]
+        )
+        == 0
+    )
+
+
+def test_cli_write_baseline_rejects_bad_args(recorded_session, tmp_path, capsys):
+    conv_dir, traj_dir = recorded_session
+    out = tmp_path / "case"
+    capture_case("s1", out, conv_dir=conv_dir, trajectory_dir=traj_dir)
+    case_args = ["--case", str(out)]
+    # 必须同时给 --stub（先于单 cell 校验命中 --models 缺失，同样是 rc=2）
+    assert matrix.main([*case_args, "--write-baseline"]) == 2
+    # 必须给 --case
+    assert matrix.main(["--session", "s1", "--stub", "--write-baseline"]) == 2
+    # 写与校验互斥
+    assert (
+        matrix.main([*case_args, "--stub", "--write-baseline", "--check-baseline"]) == 2
+    )
+    assert "mutually exclusive" in capsys.readouterr().err
+    # 只允许单 cell（1 harness × 1 model）
+    assert matrix.main([*case_args, "--stub", "--write-baseline", "--models", "a,b"]) == 2
+    assert (
+        matrix.main(
+            [*case_args, "--stub", "--write-baseline", "--harnesses", "minimal,code"]
+        )
+        == 2
+    )
+    assert "exactly one model" in capsys.readouterr().err
+
+
+def test_golden_ci_case_shape():
+    root = Path(__file__).resolve().parents[1] / "evals" / "ci-case"
+    assert (root / MESSAGES_FILE).is_file()
+    assert (root / BASELINE_FILE).is_file()
+    baseline = json.loads((root / BASELINE_FILE).read_text(encoding="utf-8"))
+    assert baseline["session_id"] == "ci-case"
+    assert [t["turn"] for t in baseline["turns"]] == [1, 2]
+    assert [t["tools"] for t in baseline["turns"]] == [[], []]
