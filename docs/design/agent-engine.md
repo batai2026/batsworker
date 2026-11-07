@@ -89,9 +89,51 @@ unattended runs, a failed compaction auto-trims rather than stalls the run.
 ## Steering and interruption
 
 - `queue_steering()` — the user can send additional mid-turn messages; they are
-  injected between loop iterations as steering context, not queued as new turns.
+  injected as user messages at the next model-request boundary (and at the
+  wrap-up point where the model stops requesting tools) — steering context,
+  not new turns.
+- Mid-turn steering entry points: the WS `user_message` branch accepts
+  **plain-text** messages while the session is running (`steer_session()`
+  → `engine.queue_steering()`), replies `steering_queued`, and the GUI keeps
+  its Send button alongside Stop with a "takes effect at the next step" hint.
+  Attachments/skills mid-turn are explicitly rejected (send them after the
+  turn ends); a pending approval gate keeps its reply path priority over
+  steering; interrupting the current tool call is what Stop is for — steering
+  never preempts it.
 - Interrupt — cancels the current iteration, kills shell children via
   `interrupt_hooks`, and still closes out any open tool calls (see above).
+
+## Code mode (form B)
+
+> Source: `coworker/codemode/` (bridge, guest, exec_tool),
+> `coworker/catalog.py` (`code_mode` slot),
+> `coworker/personas/builtin/code-mode/manifest.md`.
+
+Code mode lets the model emit **one fenced Python program** that orchestrates
+tool calls inside a sandbox and returns only the salient results — collapsing
+the per-call model round-trips of the tool_call loop. A prior evaluation
+(code-mode-eval) kept the idea gated behind a Go/No-Go; form B implements it
+without touching the engine loop:
+
+- **One tool**: the `code_mode` capability slot exposes a single `exec(code)`
+  tool whose description is generated from the session's real expanded tool
+  set as compact one-line signatures (minus `exec` itself).
+- **Fail-closed sandbox**: guest code runs in Docker
+  (`--network none --read-only`, memory/CPU caps, no workspace mount). No
+  Docker ⇒ `{"error": "sandbox_unavailable"}` — model code **never** runs on
+  the host, deliberately unlike the shell sandbox's graceful fallback.
+- **Stdio JSON-lines bridge**: the guest emits `{"__call__": …}` lines; the
+  host validates against the tool whitelist, passes each call through the
+  session's **Approver** (approvals and hooks are not bypassed), executes, and
+  writes back the result. User `print` output is captured by the guest runner
+  and only returned in the final `__result__` envelope, so protocol lines and
+  user output never mix.
+- **Limits**: 60 s per exec (Docker start-up cost), 64 KiB each for
+  stdout/stderr, ≤16 bridge calls per exec; `exec` itself goes through
+  approval with the full source in the preview card.
+- **Audit**: each run records a `code_exec` ledger record (code + `sandboxed`
+  + bridge call count); every bridged call still records the standard
+  `tool_call`/`tool_result` pair.
 
 ## What the model sees
 

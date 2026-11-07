@@ -154,8 +154,41 @@ Aligned with the upstream v0.3.1 release notes (OpenShell + egress policy):
 - e2e specs typecheck under the GUI tsconfig; running them requires a normal
   (non-sandboxed) environment (Playwright spawns browsers).
 
+## 2026-11 update: the borrowed harness line (11/11 done)
+
+A second evaluation (2026-11-07) scored the tree at **~0.88/1.0**. The eleven
+items borrowed from the DeepSeek Harness analysis are all landed; see
+[eval-and-replay.md](eval-and-replay.md) for the five eval-side items and
+[permissions-and-approvals.md](permissions-and-approvals.md) §Plugin consent
+governance for the four consent-side items.
+
+| Item | What landed |
+|---|---|
+| P0-1 turn ledger | `coworker/trajectory.py` — append-only redacted JSONL, `GET /v1/sessions/{id}/trajectory` |
+| P0-2 fork / replay | `POST /v1/sessions/{id}/fork` + `/replay` + `trajectory/diff` |
+| P1-3 PluginManifest | `coworker/plugins/` adapter layer over persona/skill/connector/mcp |
+| P1-4 presets + eval matrix | minimal/creator presets, `coworker/eval/matrix.py` |
+| P2-5 code mode evaluation | No-Go report kept the engine loop untouched |
+| form-B code mode | `coworker/codemode/` — `exec` tool, fail-closed Docker sandbox, approval-bridged |
+| P2-6 harness registry | `coworker/personas/harness.py` — one source for harness definitions |
+| P2-7 unified install pipeline | connector/MCP installs re-routed through `plugins/lifecycle` |
+| P2-8 consent v2 | permission-widening `PATCH` gated behind explicit `confirm` (409 otherwise) |
+| P2-9 mid-turn steering | plain-text messages queue while running, injected at the next model boundary |
+| P2-10 consent audit | append-only `plugin_audit.jsonl` + `GET /v1/plugins/audit` |
+| P2-11 eval capture | `coworker/eval/capture.py` → `matrix --case` consumes the package |
+
+Verification at the end of the line: full pytest **2155 passed / 9 skipped**,
+ruff clean, GUI vitest 199/199, i18n check clean.
+
+**Remaining gaps before 1.0** (unchanged from the 0.88 assessment): the eval
+loop is not yet automated — the capture baseline is a reference, not an
+assertion, and the real-model matrix has not been run; OpenShell still uses
+placeholder CLI flags; the frontend keeps the extracted-hooks architecture
+with a `zustand` migration held in reserve.
+
 ## Follow-ups (P2)
 
-See the "Priority plan" table — packaging-in-CI/signing, real security drill,
-PWA audit, plus v2 sandbox work (file tools, background tasks), and a possible
-`zustand` migration if the extracted hooks still leave App.tsx too large.
+Eval: automated baseline assertion in matrix reports + a real-model matrix
+run. Security: real OpenShell CLI flags in `sandbox_openshell_prefix`, desktop
+OpenShell settings item. Frontend: `zustand` migration only if the extracted
+hooks still leave App.tsx too large.

@@ -121,3 +121,79 @@ Invariants:
 current session, and the self-protection/deferred-execution floors still apply
 on top (a grant never overrides a floor). Automation tasks carry their own
 task-scoped `always_allowed_tools` rules, see [automation.md](automation.md).
+
+## Plugin consent governance
+
+> Source: `coworker/plugins/` (manifest, adapters, consent, lifecycle,
+> consent_audit), `coworker/server/manager_mcp.py`,
+> `coworker/connectors/marketplace.py`.
+
+Tool-call approvals govern what the agent does *inside* a session. A parallel
+consent line governs what gets *installed*: personas, skills, connector
+plugins, and MCP servers all carry permissions, and installing or updating
+them can widen what future sessions may do. Four pieces:
+
+### Unified PluginManifest (adapter layer)
+
+The four extension kinds keep their native formats, loaders, and stores; a
+read-side adapter projects each onto one `PluginManifest(kind, id, name,
+version, deps, capability_set, permissions, signature, source, description)`:
+
+- `kind ∈ {persona, skill, connector, mcp}`; `capability_set` is a flat,
+  comparable set namespaced as `tool:<id>` / `mcp:<name>` /
+  `connector:<name>` / `skill:<name>` / `messaging` / `team:<role>`.
+- `permissions` carries kind-specific semantics (persona: connector grants +
+  `default_mode`; skill: `allowed_tools`; connector: `auth` / `two_way` /
+  `mcp_backed`; mcp: `requires_approval` + `include/exclude_tools`).
+- Signing reuses `personas/signing.py` (`manifest.sha256` + minisign) for
+  directory bundles; MCP servers are JSON config, not bundles, and stay
+  unsigned — their risk is gated by `requires_approval` + workspace trust.
+- `consent_summary(pm)` produces one shape (`id/name/kind/version/
+  capability_set/risks/permissions/signature/source`) so the UI reuses the
+  persona consent card for all kinds.
+
+### Unified install pipeline
+
+`plugins/lifecycle.install/update/uninstall` is the single entry point:
+parse → adapter → optional signature verify → `capability_set` →
+`capability_diff` against the installed same-kind id (growth ⇒
+`requires_consent: true`, and the caller must obtain consent before commit) →
+delegate to the native store. Connector install/uninstall and MCP add/patch
+were re-routed through it (previously they bypassed consent entirely); REST
+responses gained a nested `consent` key while keeping all legacy fields. The
+GUI contract is unchanged — clicking install or submitting the MCP form *is*
+the consent action; no second dialog was added.
+
+### Consent v2: the permission-widening gate
+
+`capability_diff` compares capability sets, but connector/MCP capabilities are
+constant (`connector:<name>`, `mcp:<name>`), so permission-semantic changes
+like `requires_approval: true → false` used to land silently. The v2 gate adds
+`permission_diff(old, new) -> {"widened": [...]}`:
+
+| Change | Verdict |
+|---|---|
+| `requires_approval` true → false | widened |
+| `include_tools` list → null (open all) | widened |
+| `include_tools` gains entries | widened |
+| `include_tools` null/list → (shorter) list | narrowing — not gated |
+| `exclude_tools` loses entries | widened |
+| `two_way` false → true (inbound messages on) | widened |
+
+On `PATCH /v1/mcp/{name}`, a widening change without `confirm: true` returns
+**409** with the consent payload and leaves the config untouched; with
+`confirm` it lands. Narrowing or unchanged updates apply immediately. The
+`confirm` key is popped before persistence — it never reaches `mcp.json`.
+
+### Consent audit ledger
+
+Every install / uninstall / permission change appends one record to
+`<state-dir>/plugin_audit.jsonl`: `ts / kind / id / action
+(install|uninstall|update) / decision (accepted|deferred|denied) / source /
+capability_set / risks / permissions / widened`. A blocked (409) patch is
+recorded as `denied` with its `widened` list, so "when and why was approval
+disabled for this server" is answerable after the fact. Only consent summaries
+are recorded — never env values, tokens, or raw configs. Writes fail silently
+(same contract as the turn ledger: auditing must never block a request), and
+`GET /v1/plugins/audit?limit=&id=` reads them back (newest first, corrupt
+lines skipped).

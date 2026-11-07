@@ -26,6 +26,7 @@
 17. [隐私与安全](#17-隐私与安全)
 18. [键盘快捷键](#18-键盘快捷键)
 19. [常见问题](#19-常见问题)
+20. [评测与回放（开发者向）](#20-评测与回放开发者向)
 
 ---
 
@@ -618,3 +619,50 @@ OpenWorker 的隐私模型非常简单：**一切都在你的电脑上**。
 
 **Q: 界面上有些文字还是英文的？**
 主流程已完全中文化。部分次级页面（连接器详情页、Persona 详情页、看板全屏等）仍在翻译中——这些页面的功能不受影响。
+
+---
+
+## 20. 评测与回放（开发者向）
+
+> 面向想横向对比模型或协作者（harness）表现的进阶用户与开发者。
+> 设计细节见 [design/eval-and-replay.md](design/eval-and-replay.md)。
+
+OpenWorker 为每个会话记录一份**轨迹账本**（只含摘要与指纹，不含正文与密钥），它是分叉、回放与离线评测的共同基础。
+
+### 20.1 把真实会话导出为评测用例
+
+```powershell
+python -m coworker.eval.capture <会话ID> --out <输出目录>
+```
+
+- 会话 ID 即会话数据文件名（`<数据目录>/conversations/<会话ID>.jsonl`）。
+- 导出两个文件：`messages.jsonl`（每轮用户输入一行）与 `baseline.json`（每轮的模型、出站字节数、请求数、工具调用序列——作为后续对比的参照基线）。
+- **隐私门禁**：如果该会话曾接触过密钥（账本中存在脱敏标记），导出会被拒绝；确认无误后可加 `--force` 强制导出。
+
+### 20.2 跑「模型 × harness」矩阵
+
+```powershell
+# 直接消费导出的用例包
+python -m coworker.eval.matrix --case <用例目录> --models openai:gpt-5.6-sol,anthropic:claude-opus-4-8 --harnesses minimal,code --out report.json
+
+# 或者直接从会话读取
+python -m coworker.eval.matrix --session <会话ID> --models ... --harnesses minimal
+```
+
+常用参数：
+
+| 参数 | 说明 |
+|---|---|
+| `--harnesses` | 逗号分隔的 harness id：内置 `minimal / code / creator / code-mode`，或任何已安装协作者的 id |
+| `--stub` | 用确定性假模型离线自测（不联网、不消耗额度），用于验证流程 |
+| `--auto-approve` | 自动批准工具调用（无人值守跑工具时才开；默认全部拒绝） |
+| `--max-turns N` | 只重放前 N 轮 |
+| `--out` | 报告 JSON 输出路径 |
+
+报告中每个「模型 × harness」格子都附带 `vs_baseline` 对比（逐轮的字节数差异与工具序列是否一致）。**基线只是参照，不会自动判定通过/失败**——偏差是否有问题由你阅读报告判断。
+
+### 20.3 分叉与回放（API）
+
+- `POST /v1/sessions/{id}/fork` `{"turn": N}`：在第 N 轮之前切开，复制出一个新会话（不携带 turn 则整体复制）。只复制会话状态，不复制工作区文件。
+- `POST /v1/sessions/{id}/replay` `{"input": "..."}`：在分叉出的会话上重放输入；不带 input 时自动重放切割点那一轮的用户输入。
+- `GET /v1/sessions/{id}/trajectory/diff?other=<会话ID>`：逐条对比两个会话发往模型的请求指纹，验证回放是否一致。
