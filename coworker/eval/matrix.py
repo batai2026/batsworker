@@ -349,6 +349,9 @@ def _temp_dir() -> Path:
 # -- 基线对比（--case，P2-11） ---------------------------------------------------
 
 
+DEFAULT_MAX_BYTES_RATIO = 0.10
+
+
 def compare_baseline(
     cell: dict[str, Any], baseline: dict[str, Any]
 ) -> list[dict[str, Any]]:
@@ -388,6 +391,94 @@ def compare_baseline(
     return diffs
 
 
+def check_baseline(
+    report: dict[str, Any], *, max_bytes_ratio: float = DEFAULT_MAX_BYTES_RATIO
+) -> dict[str, Any]:
+    """把 vs_baseline 升级为可断言的回归门禁。
+
+    默认行为不变（基线仅参照）；本函数只在调用方显式要求时使用。
+    返回 ``{"ok", "max_bytes_ratio", "checked_turns", "failures"}``。
+    """
+    baseline = report.get("baseline") or {}
+    base_turns = set()
+    for item in baseline.get("turns") or []:
+        try:
+            base_turns.add(int(item.get("turn") or 0))
+        except (TypeError, ValueError):
+            continue
+
+    failures: list[dict[str, Any]] = []
+    checked = 0
+    for cell in report.get("cells") or []:
+        harness = cell.get("harness", "")
+        model = cell.get("model", "")
+        if cell.get("status") != "ok":
+            failures.append(
+                {
+                    "harness": harness,
+                    "model": model,
+                    "turn": None,
+                    "kind": "cell_error",
+                    "detail": cell.get("error") or "",
+                }
+            )
+            continue
+        for diff in cell.get("vs_baseline") or []:
+            turn = diff.get("turn")
+            checked += 1
+            if turn not in base_turns:
+                failures.append(
+                    {
+                        "harness": harness,
+                        "model": model,
+                        "turn": turn,
+                        "kind": "missing_turn",
+                        "detail": "turn missing from baseline",
+                    }
+                )
+                continue
+            if not diff.get("tools_match"):
+                failures.append(
+                    {
+                        "harness": harness,
+                        "model": model,
+                        "turn": turn,
+                        "kind": "tool_drift",
+                        "detail": {
+                            "tools": diff.get("tools") or [],
+                            "base_tools": diff.get("base_tools") or [],
+                        },
+                    }
+                )
+            base_bytes = int(diff.get("base_bytes") or 0)
+            delta = int(diff.get("bytes_delta") or 0)
+            if base_bytes > 0:
+                ratio = abs(delta) / base_bytes
+            else:
+                ratio = float(abs(delta))
+            if ratio > max_bytes_ratio:
+                failures.append(
+                    {
+                        "harness": harness,
+                        "model": model,
+                        "turn": turn,
+                        "kind": "bytes_drift",
+                        "detail": {
+                            "bytes": diff.get("bytes"),
+                            "base_bytes": base_bytes,
+                            "delta": delta,
+                            "ratio": round(ratio, 4),
+                        },
+                    }
+                )
+    return {
+        "ok": not failures,
+        "max_bytes_ratio": max_bytes_ratio,
+        "checked_turns": checked,
+        "failures": failures,
+    }
+
+
 # -- CLI ----------------------------------------------------------------------
 
 
@@ -418,6 +509,17 @@ def main(argv: Optional[list[str]] = None) -> int:
     )
     parser.add_argument("--max-turns", type=int, default=0, help="最多跑前 N 轮（0 = 全部）")
     parser.add_argument("--out", help="报告 JSON 输出路径")
+    parser.add_argument(
+        "--check-baseline",
+        action="store_true",
+        help="把 --case 的基线对比作为门禁：漂移即退出码 3（默认仅参照）",
+    )
+    parser.add_argument(
+        "--max-bytes-ratio",
+        type=float,
+        default=DEFAULT_MAX_BYTES_RATIO,
+        help=f"check-baseline 允许的出站字节相对偏差（默认 {DEFAULT_MAX_BYTES_RATIO}）",
+    )
     args = parser.parse_args(argv)
 
     harness_names = [h.strip() for h in args.harnesses.split(",") if h.strip()]
@@ -437,6 +539,12 @@ def main(argv: Optional[list[str]] = None) -> int:
     if args.session and args.case:
         print("--case and --session are mutually exclusive", file=sys.stderr)
         return 2
+    if args.check_baseline and not args.case:
+        print("--check-baseline requires --case", file=sys.stderr)
+        return 2
+    if args.max_bytes_ratio < 0:
+        print("--max-bytes-ratio must be >= 0", file=sys.stderr)
+        return 2
 
     baseline: Optional[dict[str, Any]] = None
     if args.case:
@@ -446,6 +554,12 @@ def main(argv: Optional[list[str]] = None) -> int:
         if not turns:
             print(
                 f"no turns found in case {args.case!r} (missing messages.jsonl?)",
+                file=sys.stderr,
+            )
+            return 2
+        if args.check_baseline and baseline is None:
+            print(
+                f"no baseline.json found in case {args.case!r}; cannot check baseline",
                 file=sys.stderr,
             )
             return 2
@@ -478,10 +592,14 @@ def main(argv: Optional[list[str]] = None) -> int:
             out_path=args.out,
         )
     )
+    gate: Optional[dict[str, Any]] = None
     if baseline is not None:
         report["baseline"] = baseline
         for cell in report["cells"]:
             cell["vs_baseline"] = compare_baseline(cell, baseline)
+        if args.check_baseline:
+            gate = check_baseline(report, max_bytes_ratio=args.max_bytes_ratio)
+            report["baseline_check"] = gate
         if args.out:  # run_matrix 已先行落盘，对比字段补上后需重写
             target = Path(args.out).expanduser()
             target.write_text(
@@ -502,7 +620,26 @@ def main(argv: Optional[list[str]] = None) -> int:
                 f"{diff['base_bytes']} (Δ{diff['bytes_delta']:+d}), "
                 f"tool_calls {diff['tool_calls']}/{diff['base_tool_calls']} [{mark}]"
             )
-    return 0 if all(c["status"] == "ok" for c in report["cells"]) else 1
+    if gate is not None:
+        if gate["ok"]:
+            print(f"baseline check: ok ({gate['checked_turns']} turns)")
+        else:
+            print(
+                f"baseline check: {len(gate['failures'])} failure(s) "
+                f"(max_bytes_ratio={gate['max_bytes_ratio']})",
+                file=sys.stderr,
+            )
+            for failure in gate["failures"]:
+                turn = "" if failure["turn"] is None else f" turn {failure['turn']}"
+                print(
+                    f"  {failure['harness']} {failure['model']}{turn}: {failure['kind']}",
+                    file=sys.stderr,
+                )
+    if any(c["status"] != "ok" for c in report["cells"]):
+        return 1
+    if gate is not None and not gate["ok"]:
+        return 3
+    return 0
 
 
 if __name__ == "__main__":  # pragma: no cover

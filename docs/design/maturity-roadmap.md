@@ -181,14 +181,15 @@ Verification at the end of the line: full pytest **2155 passed / 9 skipped**,
 ruff clean, GUI vitest 199/199, i18n check clean.
 
 **Remaining gaps before 1.0** (unchanged from the 0.88 assessment): the eval
-loop is not yet automated — the capture baseline is a reference, not an
-assertion, and the real-model matrix has not been run; OpenShell still uses
+loop is not yet fully automated — the capture baseline now supports an opt-in
+gate (`matrix --case --check-baseline`, exit code 3 on drift), but no CI job
+wires it and the real-model matrix has not been run; OpenShell still uses
 placeholder CLI flags; the frontend keeps the extracted-hooks architecture
 with a `zustand` migration held in reserve.
 
 ## Follow-ups (P2)
 
-Eval: automated baseline assertion in matrix reports + a real-model matrix
-run. Security: real OpenShell CLI flags in `sandbox_openshell_prefix`, desktop
-OpenShell settings item. Frontend: `zustand` migration only if the extracted
-hooks still leave App.tsx too large.
+Eval: wire `--check-baseline` into CI + a real-model matrix run. Security:
+real OpenShell CLI flags in `sandbox_openshell_prefix`, desktop OpenShell
+settings item. Frontend: `zustand` migration only if the extracted hooks
+still leave App.tsx too large.

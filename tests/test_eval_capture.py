@@ -2,11 +2,12 @@
 
 覆盖：capture 导出 messages.jsonl + baseline.json（字段与账本一致）、隐私门禁
 （脱敏命中默认拒绝、--force 放行）、matrix --case 消费跑通并给出 vs_baseline 对比、
-CLI 互斥校验。
+基线门禁（--check-baseline 的判定规则与退出码）、CLI 互斥校验。
 """
 
 from __future__ import annotations
 
+import asyncio
 import json
 
 import pytest
@@ -19,7 +20,7 @@ from coworker.eval.capture import (
     load_case,
     session_has_redactions,
 )
-from coworker.eval.matrix import compare_baseline, run_matrix
+from coworker.eval.matrix import check_baseline, compare_baseline, run_matrix
 
 
 def _write_jsonl(path, rows) -> None:
@@ -220,3 +221,194 @@ def test_cli_case_missing_messages(tmp_path):
     empty = tmp_path / "empty"
     empty.mkdir()
     assert matrix.main(["--case", str(empty), "--stub"]) == 2
+
+
+# -- 基线门禁（--check-baseline） ------------------------------------------------
+
+
+def _report_with_cell(**turn_fields):
+    """构造最小报告：一个 cell，一轮，字段可覆盖。"""
+    turn = {
+        "turn": 1,
+        "status": "ok",
+        "digest": "d" * 64,
+        "bytes": 1000,
+        "model": "stub:model",
+        "tools": ["read_file"],
+        "requests": 1,
+        "tool_calls": 1,
+        "tool_names": ["read_file"],
+        **(turn_fields or {}),
+    }
+    return {
+        "baseline": {"turns": [{"turn": 1, "bytes": 1000, "tools": ["read_file"]}]},
+        "cells": [
+            {
+                "harness": "minimal",
+                "model": "stub:model",
+                "status": "ok",
+                "error": None,
+                "turns": [turn],
+                "vs_baseline": [
+                    {
+                        "turn": 1,
+                        "bytes": turn["bytes"],
+                        "base_bytes": 1000,
+                        "bytes_delta": turn["bytes"] - 1000,
+                        "tool_calls": turn["tool_calls"],
+                        "base_tool_calls": 1,
+                        "tools": turn["tool_names"],
+                        "base_tools": ["read_file"],
+                        "tools_match": turn["tool_names"] == ["read_file"],
+                    }
+                ],
+            }
+        ],
+    }
+
+
+def test_check_baseline_passes_on_match():
+    result = check_baseline(_report_with_cell())
+    assert result["ok"] is True
+    assert result["checked_turns"] == 1
+    assert result["failures"] == []
+    assert result["max_bytes_ratio"] == matrix.DEFAULT_MAX_BYTES_RATIO
+
+
+def test_check_baseline_flags_tool_drift():
+    result = check_baseline(
+        _report_with_cell(tool_calls=0, tool_names=[], bytes=1000)
+    )
+    assert result["ok"] is False
+    assert [f["kind"] for f in result["failures"]] == ["tool_drift"]
+    assert result["failures"][0]["detail"]["base_tools"] == ["read_file"]
+
+
+def test_check_baseline_bytes_threshold():
+    # 1000 → 1200 是 20% 偏差：默认 10% 拦下，放宽到 0.25 放行
+    result = check_baseline(_report_with_cell(bytes=1200))
+    assert result["ok"] is False
+    (failure,) = result["failures"]
+    assert failure["kind"] == "bytes_drift"
+    assert failure["detail"]["ratio"] == 0.2
+    assert check_baseline(_report_with_cell(bytes=1200), max_bytes_ratio=0.25)["ok"]
+    # 恰好等于阈值不判失败（用严格大于）
+    assert check_baseline(_report_with_cell(bytes=1100), max_bytes_ratio=0.1)["ok"]
+
+
+def test_check_baseline_flags_missing_turn_and_cell_error():
+    missing = _report_with_cell()
+    missing["baseline"] = {"turns": []}
+    result = check_baseline(missing)
+    assert [f["kind"] for f in result["failures"]] == ["missing_turn"]
+
+    broken = _report_with_cell()
+    broken["cells"][0]["status"] = "error"
+    broken["cells"][0]["error"] = "RuntimeError: boom"
+    result = check_baseline(broken)
+    assert [f["kind"] for f in result["failures"]] == ["cell_error"]
+    assert result["checked_turns"] == 0
+
+
+def test_cli_check_baseline_requires_case(tmp_path):
+    assert matrix.main(["--session", "s1", "--stub", "--check-baseline"]) == 2
+    assert (
+        matrix.main(
+            ["--case", str(tmp_path / "case"), "--stub", "--max-bytes-ratio", "-1"]
+        )
+        == 2
+    )
+
+
+def test_cli_check_baseline_requires_baseline_file(recorded_session, tmp_path):
+    conv_dir, traj_dir = recorded_session
+    out = tmp_path / "case"
+    capture_case("s1", out, conv_dir=conv_dir, trajectory_dir=traj_dir)
+    (out / BASELINE_FILE).unlink()
+    assert matrix.main(["--case", str(out), "--stub", "--check-baseline"]) == 2
+
+
+def _baseline_from_cell(cell, session_id="s1"):
+    """把一次确定性 stub 跑的 cell 结果转成 capture 基线格式。"""
+    return {
+        "session_id": session_id,
+        "turns": [
+            {
+                "turn": t["turn"],
+                "model": t["model"],
+                "bytes": t["bytes"],
+                "requests": t["requests"],
+                "tool_calls": t["tool_calls"],
+                "tools": t["tool_names"],
+            }
+            for t in cell["turns"]
+        ],
+    }
+
+
+def test_cli_check_baseline_end_to_end(recorded_session, tmp_path, capsys):
+    conv_dir, traj_dir = recorded_session
+    out = tmp_path / "case"
+    capture_case("s1", out, conv_dir=conv_dir, trajectory_dir=traj_dir)
+    turns, _ = load_case(out)
+
+    # 先跑一次确定性 stub，用其结果覆盖捕获基线 → 再跑应完全一致
+    seed = asyncio.run(
+        run_matrix(
+            turns=turns,
+            models=["stub:model"],
+            harness_names=["minimal"],
+            workspace=tmp_path,
+            provider_factory=matrix._stub_provider_factory(),
+            work_dir=tmp_path / "seed",
+        )
+    )
+    reproducible = _baseline_from_cell(seed["cells"][0])
+    (out / BASELINE_FILE).write_text(
+        json.dumps(reproducible, ensure_ascii=False), encoding="utf-8"
+    )
+
+    report_path = tmp_path / "report.json"
+    rc = matrix.main(
+        [
+            "--case",
+            str(out),
+            "--stub",
+            "--workspace",
+            str(tmp_path),
+            "--out",
+            str(report_path),
+            "--check-baseline",
+        ]
+    )
+    assert rc == 0
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+    assert report["baseline_check"]["ok"] is True
+    assert report["baseline_check"]["checked_turns"] == 2
+    assert "baseline check: ok" in capsys.readouterr().out
+
+
+def test_cli_check_baseline_drift_exit_code(recorded_session, tmp_path, capsys):
+    conv_dir, traj_dir = recorded_session
+    out = tmp_path / "case"
+    capture_case("s1", out, conv_dir=conv_dir, trajectory_dir=traj_dir)
+
+    # 捕获基线含 read_file，stub 不调工具 → 工具序列漂移必然失败
+    report_path = tmp_path / "report.json"
+    rc = matrix.main(
+        [
+            "--case",
+            str(out),
+            "--stub",
+            "--workspace",
+            str(tmp_path),
+            "--out",
+            str(report_path),
+            "--check-baseline",
+        ]
+    )
+    assert rc == 3
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+    kinds = {f["kind"] for f in report["baseline_check"]["failures"]}
+    assert "tool_drift" in kinds
+    assert "failure(s)" in capsys.readouterr().err

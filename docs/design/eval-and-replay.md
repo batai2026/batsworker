@@ -225,14 +225,22 @@ gate guards the fact of secret contact, not the content.
 `matrix.py --case <dir>` consumes the package (mutually exclusive with
 `--session`), and each report cell gains a `vs_baseline` block:
 per-turn `{bytes, base_bytes, bytes_delta, tools, base_tools, tools_match}`.
-**The baseline is a reference, not an assertion** — pass/fail judgement is
-left to the human reading the report; automated regression gating is a known
-follow-up.
+
+**Reference by default, gate on request.** The baseline never fails a run
+unless the caller asks: `--check-baseline` turns the comparison into an
+assertion, judging each turn against four failure kinds — `cell_error`
+(execution failed), `missing_turn` (the baseline has no such turn),
+`tool_drift` (the actual `tool_call` name sequence differs), and
+`bytes_drift` (outbound bytes moved more than `--max-bytes-ratio`, default
+10%; a zero-byte baseline treats any bytes as drift). The verdict lands in
+`report["baseline_check"]` and the CLI exits **3** on drift (distinct from
+**1** for a failed cell), so CI can gate on it without losing the run-failure
+signal.
 
 ## Non-goals & follow-ups
 
 - No GUI for any of the above (branch tree, diff viewer, audit panel).
-- No automated baseline assertion in the matrix report.
 - No workspace snapshot/restore in fork (use the checkpoint API).
+- No cross-harness model selection or historical report archiving.
 - Batch replay and code-mode-specific replay special-casing are not
   implemented.
