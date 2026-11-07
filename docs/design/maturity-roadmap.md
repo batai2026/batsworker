@@ -207,8 +207,8 @@ The last automation gap of the eval loop is closed:
 **Remaining gaps before 1.0**: the real-model matrix still has to be run once
 with keys and its baseline committed to have real evidence (the wiring and the
 deterministic stub lane are in place); OpenShell still uses placeholder CLI
-flags; the frontend's zustand migration is under way (two slices landed, see
-`gui-state-zustand.md`).
+flags; the frontend's zustand migration has landed three slices — only the
+UI-prefs slice remains planned (see `gui-state-zustand.md`).
 
 ## Follow-ups (P2)
 
@@ -217,5 +217,5 @@ wiring and the deterministic stub lane landed in `.github/workflows/eval.yml`).
 Security: site-specific OpenShell CLI flags in `sandbox_openshell_prefix`
 (placeholders wired); desktop host checks landed (`openshell_version` +
 `docker_host_networking` commands, Settings ▸ Security card). Frontend: zustand slices
-`sessionStore` and `activeSessionStore` landed (`src/stores/`); `runStore` and
-the UI-prefs slice remain planned in `gui-state-zustand.md`.
+`sessionStore`, `activeSessionStore` and `runStore` landed (`src/stores/`); only
+the UI-prefs slice remains planned in `gui-state-zustand.md`.

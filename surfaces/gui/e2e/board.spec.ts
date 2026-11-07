@@ -149,13 +149,14 @@ test("Add a note is a pure append — it lands in the timeline, state untouched"
 
 test("journal section lists cases once a board exists", async ({ page }) => {
   await planTheWork(page);
-  // Journal is not a primary section — it sits behind the quiet More row.
-  await expect(page.getByTestId("rail-toggle-journal")).toHaveCount(0);
-  await page.getByTestId("rail-toggle-journal").click();
+  // Sections list flat (the quiet More fold was removed 2026-08-20); the Journal
+  // section appears once the board exists and its fetch lands.
+  const toggle = page.getByTestId("rail-toggle-journal");
+  await expect(toggle).toBeVisible();
+  await toggle.click();
   const journal = page.getByTestId("journal-list");
   await expect(journal).toBeVisible();
   await expect(journal).toContainText("findings");
   await expect(journal).toContainText("12 entries");
-  // Access folds with it — the drawer keeps three primary sections.
   await expect(page.getByTestId("access-section")).toBeVisible();
 });

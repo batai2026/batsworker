@@ -9,6 +9,8 @@ import {
   runAutomation,
 } from "../api";
 import { resumeTargetForAgent } from "./useSessions";
+import { useRunStore } from "../stores/runStore";
+import { emptyUsage } from "../usage";
 
 vi.mock("../api", () => ({
   getSessions: vi.fn(),
@@ -67,6 +69,16 @@ function makeDeps(overrides: Record<string, unknown> = {}): SessionActionsDeps {
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
+  // Singleton store: a test that seeds live items must not leak into the next one.
+  useRunStore.setState({
+    items: [],
+    usage: emptyUsage(),
+    streaming: "",
+    reasoningStream: "",
+    todo: [],
+    running: false,
+    compacting: false,
+  });
 });
 
 describe("useSessionActions", () => {
@@ -80,6 +92,27 @@ describe("useSessionActions", () => {
     expect(deps.setSessionId).toHaveBeenCalledWith("s9");
     expect(deps.setWorkspace).toHaveBeenCalledWith("/ws/nine");
     expect(getSessionMessages).toHaveBeenCalledWith("s9");
+  });
+
+  it("selectSession keeps live items that land while the history is loading", async () => {
+    // A run session's auto-sent prompt can be echoed back before the (empty) history request
+    // resolves — hydrating over it used to wipe the live turn.
+    let resolveHistory!: (messages: any[]) => void;
+    vi.mocked(getSessionMessages).mockReturnValue(
+      new Promise((resolve) => {
+        resolveHistory = resolve;
+      }),
+    );
+    const deps = makeDeps();
+    const { result } = renderHook(() => useSessionActions(deps));
+    const pending = result.current.selectSession("s-run", "/ws/run", "code");
+
+    useRunStore.setState({ items: [{ kind: "user", text: "go", ts: 1 }] });
+    resolveHistory([]);
+    await pending;
+
+    expect(deps.setItems).not.toHaveBeenCalled();
+    expect(useRunStore.getState().items).toHaveLength(1);
   });
 
   it("switchAgent resumes a remembered session when one exists", async () => {

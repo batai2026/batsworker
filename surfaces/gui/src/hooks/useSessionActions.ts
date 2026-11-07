@@ -13,6 +13,7 @@ import type { Attachment, Item, SessionInfo, SessionUsage, TodoItem } from "../t
 import type { AppSurface } from "./useAppNavigation";
 import { itemsFromMessages } from "../itemsFromMessages";
 import { emptyUsage, usageFromMessages } from "../usage";
+import { useRunStore } from "../stores/runStore";
 import { rememberLastSession, resumeTargetForAgent } from "./useSessions";
 
 // Session lifecycle actions extracted from App.tsx: opening/resuming sessions,
@@ -115,13 +116,22 @@ export function useSessionActions(deps: SessionActionsDeps) {
       setBranch(null);
     }
     setSessionId(id);
+    // The connect effect can start streaming as soon as the socket opens — a manual run's
+    // auto-sent prompt is echoed straight back — so live items can land before this history
+    // request resolves. Hydrating the (usually empty) history over them would wipe the turn;
+    // only hydrate when nothing has touched the transcript since we started.
+    const itemsBeforeLoad = useRunStore.getState().items;
     try {
       const messages = await getSessionMessages(id);
-      setItems(itemsFromMessages(messages));
-      setUsage(usageFromMessages(messages));
+      if (useRunStore.getState().items === itemsBeforeLoad) {
+        setItems(itemsFromMessages(messages));
+        setUsage(usageFromMessages(messages));
+      }
     } catch {
-      setItems([]);
-      setUsage(emptyUsage());
+      if (useRunStore.getState().items === itemsBeforeLoad) {
+        setItems([]);
+        setUsage(emptyUsage());
+      }
     }
   };
 

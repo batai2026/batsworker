@@ -1,9 +1,9 @@
-# GUI state: zustand migration plan (two slices landed)
+# GUI state: zustand migration plan (three slices landed)
 
-Status: `sessionStore` and `activeSessionStore` landed; the remaining slices are a plan,
-not scheduled. Trigger for further work: `App.tsx` is still ~1420 lines with 40+
-`useState` calls even after 15 `use*` hooks were extracted — the roadmap's condition
-"only if the extracted hooks still leave App.tsx too large" is now met.
+Status: `sessionStore`, `activeSessionStore` and `runStore` landed; only the UI-prefs
+slice remains a plan, not scheduled. Trigger for further work: `App.tsx` is still
+~1420 lines with 40+ `useState` calls even after 15 `use*` hooks were extracted — the
+roadmap's condition "only if the extracted hooks still leave App.tsx too large" is met.
 
 ## Why a store at all
 
@@ -38,7 +38,7 @@ trigger re-renders.
 |---|---|---|
 | `sessionStore` | `sessions`, `projects`, `setSessions`, `setProjects`, `refreshSessions` | **landed** |
 | `activeSessionStore` | `sessionId`, `workspace`, `branch`, `agent`, `model` (+ switch action) | **landed** — hook deps and `App.tsx` props unchanged |
-| `runStore` | `running`, `compacting`, `streaming`, `reasoningStream`, `items`, `todo`, `usage` | candidate — hot path; only after streaming is moved into a hook |
+| `runStore` | `running`, `compacting`, `streaming`, `reasoningStream`, `items`, `todo`, `usage` | **landed** — streaming ref mirrors live in `useSessionStream`; `App.tsx` subscribes once |
 | UI prefs | `surfaces`, `mode`, `contextBar`, `following`, `searchOpen` | lowest value; only if a non-React consumer appears |
 | Local-only | `tempWorkspace`, `draftFolderPicked`, `commandTrust`, `showGate`, `gateCreate`, `modelReady`, `browserRefreshKey`, `connectNonce` | keep `useState` |
 
@@ -72,6 +72,20 @@ The second pass — dropping the now-redundant `sessionId` / `workspace` / `agen
 `useSessionActions` — is intentionally not done here, so the slice stays revertible
 without touching that hook's tests.
 
+## runStore slice: what changed
+
+- `src/stores/runStore.ts`: the seven run-time fields with `Dispatch`-shaped setters
+  (`items` / `todo` updaters included — every WS handler appends through them).
+- `src/hooks/useSessionStream.ts`: the slice plan's gate — the `streaming` /
+  `reasoningStream` ref mirrors and the setters that keep them in sync moved out of
+  `App.tsx` into a hook; the rendered values still come from the store.
+- `src/App.tsx`: seven `useState` calls became one store subscription plus one hook
+  call; every hook dependency object (`useBoot`, `useSessionConnect`,
+  `useSessionActions`, `useSendGate`, `useGateResponders`) is untouched.
+- Tests: `src/stores/runStore.test.ts` (defaults / updaters / field isolation) and
+  `src/hooks/useSessionStream.test.ts` (mirror and store stay in sync on append/clear),
+  both resetting the singleton store in `beforeEach`.
+
 ## Risks and mitigations
 
 - **Singleton across tests**: reset the store in `beforeEach`
@@ -79,16 +93,26 @@ without touching that hook's tests.
   `useActiveSessionStore.setState({ sessionId, workspace, branch, agent, model })`).
   Any new store test file must do the same.
 - **Server push + polling race**: `refreshSessions` is fire-and-forget; the poll (5s)
-  and `PERSONAS_CHANGED` can overlap. Last response wins — acceptable for a list view,
-  but do not move `sessionId`/`items` into a store without a request generation guard.
+  and `PERSONAS_CHANGED` can overlap. Last response wins — acceptable for a list view.
+  `items` is safe in `runStore`: it comes from the single per-session WebSocket, not
+  from polling, and the socket is rebuilt on every session switch.
+- **History hydrate vs a live turn**: `selectSession` awaits `getSessionMessages` while
+  the new socket can already deliver a turn (a manual run's auto-sent prompt is echoed
+  immediately). Store updates commit synchronously, so live items can land before the
+  fetch resolves — and hydrating the (usually empty) history over them wiped the turn
+  (caught by `standing-approvals.spec.ts`, ~half the runs). `useSessionActions` now
+  applies the loaded history only when nothing has touched `items` since the request
+  started (identity check) and `useSessionActions.test.ts` pins that case.
 - **Prop-type drift**: migrate slices by keeping the hook's return shape stable first,
   then delete props in a second pass; `tsc --noEmit` is the gate.
-- **Rollback**: both landed slices are one store file plus a `useState`/hook-body swap;
+- **Rollback**: each landed slice is one store file plus a `useState`/hook-body swap;
   reverting the commit restores `useState` without touching consumers.
 
 ## Verification
 
 - `npx tsc --noEmit` clean.
-- `npx vitest run` (all files) — the two stores add 6 tests, `useSessions` keeps 3.
-- `npm run e2e` — the sidebar list/poll behaviour and session switch/new-session flows
-  are covered by existing session specs; no new fixtures required.
+- `npx vitest run` (all files) — the three stores plus `useSessionStream` add 13 tests,
+  `useSessions` keeps 3.
+- `npm run e2e` — the sidebar list/poll behaviour, session switch/new-session flows,
+  streaming/stop and the usage/todo panels are covered by existing specs; no new
+  fixtures required.

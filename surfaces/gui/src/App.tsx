@@ -15,12 +15,7 @@ import {
   type SurfaceVisibility,
   type WorkspaceCommandTrust,
 } from "./api";
-import type {
-  Attachment,
-  Item,
-  SessionUsage,
-  TodoItem,
-} from "./types";
+import type { Attachment, Item } from "./types";
 import { fullPersonaName, isProjectScoped } from "./personaScope";
 import { baseName } from "./paths";
 import { emptyUsage } from "./usage";
@@ -71,8 +66,10 @@ import { useBoot } from "./hooks/useBoot";
 import { useSessionActions } from "./hooks/useSessionActions";
 import { useAutomationToast } from "./hooks/useAutomationToast";
 import { useSessionConnect } from "./hooks/useSessionConnect";
+import { useSessionStream } from "./hooks/useSessionStream";
 import { useSendGate } from "./hooks/useSendGate";
 import { newSessionId as newId, useActiveSessionStore } from "./stores/activeSessionStore";
+import { useRunStore } from "./stores/runStore";
 
 const SUGGESTIONS = [
   { ico: "⚙", text: "Run the test suite and summarize any failures." },
@@ -134,42 +131,32 @@ export function App() {
   // Settings: show the composer's context-window fill bar. OFF by default (owner ask),
   // so an older backend without the field also shows the session total.
   const [contextBar, setContextBar] = useState(false);
-  // Per-session token usage (OPE-42): rebuilt from the transcript on session load,
-  // accumulated live from assistant_message events, reset with the transcript.
-  const [usage, setUsage] = useState<SessionUsage>(emptyUsage());
   const [surfaces, setSurfaces] = useState<SurfaceVisibility>({ cowork: true, chat: false, code: false });
   const [mode, setMode] = useState("interactive");
-  const [connected, setConnected] = useState(false);
-  const [running, setRunning] = useState(false);
-  // Transient "Compacting context…" indicator (OPE-27): set by the `compacting` event,
-  // cleared by whatever the engine emits next — the summarizer call is otherwise a
-  // multi-second silent stall mid-turn.
-  const [compacting, setCompacting] = useState(false);
-  const [items, setItems] = useState<Item[]>([]);
-  const [streaming, setStreamingState] = useState("");
-  // Ref mirror of `streaming`: the WS handler closure is built once per socket and can't read
-  // fresh state — the interrupted/error flush below needs the live buffer at event time.
-  // Mode markers in the transcript: which session has already seen the full Auto-approve
-  // explanation, and what mode the transcript last recorded (so a switch can be told apart
   // Which session the current `mode` value is CONFIRMED for. On a session switch, `mode`
   // still holds the previous session's value until the server's `ready` event delivers the
   // real one — announcing anything in that window posts the old session's banner into the
   // new transcript (seen 2026-08-22: a fresh Ask-for-approval session opened with the
   // Auto-approve banner, then a stray "Ask for approval is on." marker when `ready` landed).
-  const streamingRef = useRef("");
-  const setStreaming = (value: string | ((s: string) => string)) => {
-    streamingRef.current = typeof value === "function" ? value(streamingRef.current) : value;
-    setStreamingState(streamingRef.current);
-  };
-  // The turn's live thinking text (reasoning_delta events) — same ref-mirror pattern.
-  // Folded onto the assistant item when the message finalizes; cleared on turn_start.
-  const [reasoningStream, setReasoningStreamState] = useState("");
-  const reasoningRef = useRef("");
-  const setReasoningStream = (value: string) => {
-    reasoningRef.current = value;
-    setReasoningStreamState(value);
-  };
-  const [todo, setTodo] = useState<TodoItem[]>([]);
+  const [connected, setConnected] = useState(false);
+  // Per-session token usage (OPE-42), the transcript, streaming text and turn flags all live
+  // in runStore now. The streaming/reasoning ref mirrors stay out of the store and live in
+  // useSessionStream (hot path, must not re-render on every token).
+  const {
+    running,
+    compacting,
+    streaming,
+    reasoningStream,
+    items,
+    todo,
+    usage,
+    setRunning,
+    setCompacting,
+    setItems,
+    setTodo,
+    setUsage,
+  } = useRunStore();
+  const { streamingRef, reasoningRef, setStreaming, setReasoningStream } = useSessionStream();
   // Automation-run context (§ owner ask 2026-07-04): which task an open __run__ session belongs
   // to, driving the banner + "Back to runs". Best-effort — a run session without context still
   // shows a generic banner (detected by its __run__ id).
