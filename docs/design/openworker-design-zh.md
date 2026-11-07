@@ -2192,8 +2192,8 @@ App.tsx 从 **2,414 → 1,423 行**（行为完全相同的状态迁移）；`ts
 - `matrix --write-baseline` 重新生成黄金基线（仅 stub、单个单元（一个模型 × 一个 harness）、与 `--check-baseline` 互斥）。工作流与重新生成都固定**空且非 git 的工作区 + 空 `COWORKER_STATE_DIR`**：出站载荷内嵌工作区路径、git 状态/提交、每回合时钟与用户技能/记忆，任何其他环境设置都会引入噪声漂移。
 - 测试：`tests/test_eval_capture.py` 覆盖基线刷新后门禁通过、参数守卫、黄金用例的形态。
 
-**1.0 之前的剩余差距**：真实模型矩阵仍需用密钥运行一次并提交其基线，以获得真实证据（接线与确定性 stub lane 已就位）；OpenShell 仍使用占位 CLI 参数；前端保持抽取 hook 架构，`zustand` 迁移留作后备。
+**1.0 之前的剩余差距**：真实模型矩阵仍需用密钥运行一次并提交其基线，以获得真实证据（接线与确定性 stub lane 已就位）；OpenShell 仍使用占位 CLI 参数；前端 `zustand` 迁移进行中（`sessionStore` 与 `activeSessionStore` 两个切片已落地）。
 
 ### 25.12 后续（P2）
 
-评测：用密钥运行一次真实模型矩阵并提交其基线（CI 接线与确定性 stub lane 已落地于 `.github/workflows/eval.yml`）。安全：`sandbox_openshell_prefix` 中的真实 OpenShell CLI 参数、桌面 OpenShell 设置项。前端：只有当抽取 hook 后 App.tsx 仍然过大时才做 `zustand` 迁移。
+评测：用密钥运行一次真实模型矩阵并提交其基线（CI 接线与确定性 stub lane 已落地于 `.github/workflows/eval.yml`）。安全：`sandbox_openshell_prefix` 中的真实 OpenShell CLI 参数、桌面 OpenShell 设置项。前端：`sessionStore`（会话列表）与 `activeSessionStore`（活动会话）两个切片已落地，`runStore` 与 UI 偏好切片仍列入 `gui-state-zustand.md` 计划。

@@ -72,9 +72,7 @@ import { useSessionActions } from "./hooks/useSessionActions";
 import { useAutomationToast } from "./hooks/useAutomationToast";
 import { useSessionConnect } from "./hooks/useSessionConnect";
 import { useSendGate } from "./hooks/useSendGate";
-
-const newId = () =>
-  (crypto as any).randomUUID ? crypto.randomUUID().slice(0, 12) : Math.random().toString(36).slice(2, 14);
+import { newSessionId as newId, useActiveSessionStore } from "./stores/activeSessionStore";
 
 const SUGGESTIONS = [
   { ico: "⚙", text: "Run the test suite and summarize any failures." },
@@ -95,8 +93,21 @@ function fallbackWorkspace(current: string | null, projects: RecentWorkspace[]):
 
 export function App() {
   const { t } = useI18n();
-  const [workspace, setWorkspace] = useState<string | null>(null);
-  const [branch, setBranch] = useState<string | null>(null);
+  // Active session identity + workspace + persona/model. Shared by the boot, connect,
+  // send-gate and session-action hooks, and readable outside React via
+  // useActiveSessionStore.getState() (docs/design/gui-state-zustand.md).
+  const {
+    sessionId,
+    workspace,
+    branch,
+    agent,
+    model,
+    setSessionId,
+    setWorkspace,
+    setBranch,
+    setAgent,
+    setModel,
+  } = useActiveSessionStore();
   // UX-029: the active session runs in a temporary folder (never show its raw path —
   // the header says "Temporary folder" and offers Save as project…). Set locally when a
   // temp dir is created at send, corrected by every `ready` event (server truth).
@@ -115,8 +126,6 @@ export function App() {
   const [showGate, setShowGate] = useState(false);
   const [workspaceTrustRequest, setWorkspaceTrustRequest] =
     useState<WorkspaceCommandTrust | null>(null);
-  const [agent, setAgent] = useState("cowork");
-  const [model, setModel] = useState("gpt-5.6-sol");
   const [models, setModels] = useState<string[]>([]);
   const [modelLabels, setModelLabels] = useState<Record<string, string>>({});
   // {full model id → context window in tokens} from the curated matrix (verified only);
@@ -161,7 +170,6 @@ export function App() {
     setReasoningStreamState(value);
   };
   const [todo, setTodo] = useState<TodoItem[]>([]);
-  const [sessionId, setSessionId] = useState<string>(newId());
   // Automation-run context (§ owner ask 2026-07-04): which task an open __run__ session belongs
   // to, driving the banner + "Back to runs". Best-effort — a run session without context still
   // shows a generic banner (detected by its __run__ id).
