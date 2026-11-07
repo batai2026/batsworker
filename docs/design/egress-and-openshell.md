@@ -39,19 +39,31 @@ OpenShell CLI is site-deployed and varies.
 
 **Solution** — a configurable adapter with the same v2 honesty as Docker:
 
-- `OpenShellExecutor` (`coworker/tools/openshell.py`) implements `Executor`.
-  - `sandbox_openshell_prefix` (config.toml, JSON argv list; default
-    `["openshell", "exec", "--"]`) is everything up to the command placeholder.
-  - Each token may reference `{workspace}`, `{image}`, `{network}`; they expand
-    to the resolved workspace path and `sandbox_image` / `sandbox_network` at
-    construction (literal replacement, so unknown braces like `{gpu}` survive).
-    Example:
-    `["openshell","exec","--mount","{workspace}:/workspace","--image","{image}","--network","{network}","--"]`
+- `OpenShellExecutor` (`coworker/tools/openshell.py`) implements `Executor` and
+  owns the real OpenShell sandbox lifecycle (NVIDIA OpenShell ≥ v0.1.x):
+  - `sandbox_openshell_prefix` (config.toml, JSON argv list) is everything up to
+    the command placeholder. The default is the real exec CLI:
+    `["openshell","sandbox","exec","-n","{sandbox}","--workdir","/workspace","--"]`
+  - Each token may reference `{workspace}`, `{image}`, `{network}`, `{sandbox}`;
+    they expand at construction (literal replacement, so unknown braces like
+    `{gpu}` survive). `{sandbox}` is the managed sandbox name
+    (`coworker-<pid>-<hash>`).
+  - The sandbox is created lazily on the first command:
+    `openshell sandbox create --name {sandbox} --from <image> --upload
+    <workspace>:/workspace --policy <policy.yaml> --detach`, then readiness is
+    probed by re-running `true` through the exec prefix (OpenShell reports
+    not-ready errors until the sandbox leaves Provisioning). `close()` issues
+    `openshell sandbox delete <name>` (best-effort).
+  - Isolation comes from a policy file: `sandbox_openshell_policy` points at a
+    site YAML; empty means the embedded baseline (Landlock hides unlisted paths,
+    root FS read-only except `/workspace` + `/tmp`, empty `network_policies` =
+    egress denied, `run_as_user: sandbox`).
   - Availability is probed (`<prefix[0]> --version`, expanded) and cached 30s.
   - Commands run as `<prefix> <command>` with the non-interactive env + hard
     timeout; results carry `sandboxed: true`.
-  - If the CLI is missing or vanishes mid-session, it falls back to
-    `LocalExecutor` and marks `sandboxed: false` + `fallback_reason`.
+  - If the CLI is missing or vanishes mid-session, or create fails, it falls back
+    to `LocalExecutor` and marks `sandboxed: false` + `fallback_reason` (create
+    failure is sticky per session — no retry storm).
 - `agent.py::build_engine` selects it when `sandbox_backend == "openshell"`.
 - `GET /v1/settings/openshell/status` reports `available` / `prefix` / `backend`
   for the settings UI.
@@ -91,16 +103,19 @@ the browser GUI is unchanged; host networking is only needed when the sandbox ru
 
 - `tests/test_egress.py`: policy add/remove/subdomain matching, persistence, tool
   round-trip, catalog capability, API, permission-engine integration.
-- `tests/test_openshell.py`: prefix parsing, placeholder expansion (pure +
-  argv capture), CLI-missing fallback, fake-CLI success, per-command fallback,
-  status API.
+- `tests/test_openshell.py`: prefix parsing (real-CLI default), placeholder
+  expansion (`{sandbox}` + unknown braces), full lifecycle with a fake CLI
+  (create argv / readiness probe / exec / delete on close), site policy override,
+  create-failure fallback, CLI-missing fallback, status API.
 - `scripts/security_drill.py` exercises the egress round-trip as step 5/6.
 - Backend regression (security/connectors/subagents/skills/marketplaces): passed.
 
 ## Follow-ups (need real environments)
 
-- Fill `sandbox_openshell_prefix` with the site's real CLI flags (the adapter
-  already expands `{workspace}` / `{image}` / `{network}`).
+- ~~Fill `sandbox_openshell_prefix` with the site's real CLI flags~~ — done: the
+  default prefix is the real NVIDIA OpenShell CLI (`sandbox create/exec/delete`
+  lifecycle), isolation via `sandbox_openshell_policy` (embedded baseline when
+  unset). Remaining: verify on a host with OpenShell installed.
 - Verify `ghcr.io` push on a real tag release.
 - Desktop host checks landed (`openshell_version` + `docker_host_networking`, GUI card);
   still to verify on a machine with Docker Desktop and OpenShell installed.

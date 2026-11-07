@@ -2480,7 +2480,7 @@ export async function mockApi(page: import("@playwright/test").Page) {
       }
     }
     if (p.endsWith("/v1/settings/openshell/status") && m === "GET") {
-      return json({ ok: true, available: false, prefix: ["openshell", "exec", "--"], backend: "docker" });
+      return json({ ok: true, available: false, prefix: ["openshell", "sandbox", "exec", "-n", "{sandbox}", "--workdir", "/workspace", "--"], backend: "docker" });
     }
 
     // Anything else: an empty-but-valid body. GET list endpoints read `?? []`/`?? {}` fallbacks.

@@ -99,14 +99,21 @@ class Config:
     # the host shell. "docker" backend requires Docker CLI + daemon; "openshell"
     # backend runs commands inside an NVIDIA OpenShell sandbox (CLI configurable
     # via sandbox_openshell_prefix, a JSON argv list ending at the command
-    # placeholder; tokens may use {workspace}/{image}/{network} placeholders).
-    # The workspace is mounted read-write; network is isolated;
-    # root FS is read-only. Both fall back to LocalExecutor when unavailable.
+    # placeholder; tokens may use {workspace}/{image}/{network}/{sandbox}
+    # placeholders). The executor creates one named sandbox per session
+    # (openshell sandbox create/exec/delete); sandbox_openshell_policy points at
+    # a site policy YAML (empty = embedded baseline: no egress, read-only root,
+    # only /workspace + /tmp writable). Both fall back to LocalExecutor when
+    # unavailable.
     sandbox_enabled: bool = False
     sandbox_backend: str = "docker"
     sandbox_image: str = "python:3.12-slim"
     sandbox_network: str = "none"
-    sandbox_openshell_prefix: str = '["openshell","exec","--"]'
+    sandbox_openshell_prefix: str = (
+        '["openshell","sandbox","exec","-n","{sandbox}",'
+        '"--workdir","/workspace","--"]'
+    )
+    sandbox_openshell_policy: str = ""
     # Reviewer model decoupling (v1): when set, the Auto-Approve reviewer uses this
     # model instead of the session model. The same ProviderRouter routes by prefix —
     # a different provider family gives independent judgment (decorrelated errors).
@@ -175,6 +182,7 @@ _GLOBAL_ONLY_FIELDS = {
     "sandbox_image",
     "sandbox_network",
     "sandbox_openshell_prefix",
+    "sandbox_openshell_policy",
     "reviewer_model",
     "fast_model",
     "trajectory_enabled",

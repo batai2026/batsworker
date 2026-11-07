@@ -126,9 +126,15 @@ Aligned with the upstream v0.3.1 release notes (OpenShell + egress policy):
     so approved domains auto-run (`permissions.py`).
   - API: `GET/POST /v1/egress/policy`, `DELETE /v1/egress/policy/{domain}`.
   - Registered as the `egress` catalog capability on all 7 security personas.
-- **OpenShell executor scaffolding** (`coworker/tools/openshell.py`):
-  configurable CLI prefix (`sandbox_openshell_prefix`, default `openshell exec --`
-  with `{workspace}` / `{image}` / `{network}` placeholders), cached availability
+- **OpenShell executor** (`coworker/tools/openshell.py`): the real NVIDIA
+  OpenShell CLI is wired — `sandbox_openshell_prefix` defaults to
+  `openshell sandbox exec -n {sandbox} --workdir /workspace --` with
+  `{workspace}` / `{image}` / `{network}` / `{sandbox}` placeholders; the
+  executor creates one named sandbox per session
+  (`sandbox create --from <image> --upload <ws>:/workspace --policy <yaml>
+  --detach`, readiness probed via exec `true`) and deletes it on `close()`.
+  Isolation policy: `sandbox_openshell_policy` or the embedded baseline (no
+  egress, read-only root, only /workspace + /tmp writable). Cached availability
   probe, per-command v2 fallback to LocalExecutor with
   `sandboxed: false` + `fallback_reason`. `agent.py` selects it when
   `sandbox_backend == "openshell"`.
@@ -141,10 +147,10 @@ Aligned with the upstream v0.3.1 release notes (OpenShell + egress policy):
   `ghcr.io/andrewyng/openworker:<tag>` + `latest` on tags.
 - **e2e**: `security-tab.spec.ts` covers the egress card (add/list/remove) with
   mutable fixture routes for `/v1/egress/policy`.
-- Follow-ups: fill `sandbox_openshell_prefix` with the site's real CLI flags
-  (placeholders already wired); desktop OpenShell checks landed (Tauri
+- Follow-ups: desktop OpenShell checks landed (Tauri
   `openshell_version` / `docker_host_networking` + Settings ▸ Security card,
-  desktop-only).
+  desktop-only); real CLI flags landed (create/exec/delete lifecycle +
+  `sandbox_openshell_policy`) — verify on a host with OpenShell installed.
 
 ## Verification
 
@@ -204,18 +210,21 @@ The last automation gap of the eval loop is closed:
 - Tests: `tests/test_eval_capture.py` covers refresh → gate passes, argument
   guards, and the golden case's shape.
 
-**Remaining gaps before 1.0**: the real-model matrix still has to be run once
-with keys and its baseline committed to have real evidence (the wiring and the
-deterministic stub lane are in place); OpenShell still uses placeholder CLI
-flags; the frontend's zustand migration has landed three slices — only the
-UI-prefs slice remains planned (see `gui-state-zustand.md`).
+**Remaining gaps before 1.0**: the real-model matrix baseline is committed
+(`evals/ci-case/real-baseline.json`, deepseek:deepseek-v4.1, run 42419210644);
+OpenShell runs on the real NVIDIA CLI (create/exec/delete lifecycle +
+`sandbox_openshell_policy`) — both still want verification on hosts with the
+real tooling; the frontend's zustand migration has landed three slices — only
+the UI-prefs slice remains planned (see `gui-state-zustand.md`).
 
 ## Follow-ups (P2)
 
-Eval: run the real-model matrix once with keys and commit its baseline (the CI
-wiring and the deterministic stub lane landed in `.github/workflows/eval.yml`).
-Security: site-specific OpenShell CLI flags in `sandbox_openshell_prefix`
-(placeholders wired); desktop host checks landed (`openshell_version` +
+Eval: ~~run the real-model matrix once with keys and commit its baseline~~ —
+done (`evals/ci-case/real-baseline.json`; the CI wiring and the deterministic
+stub lane landed in `.github/workflows/eval.yml`).
+Security: ~~site-specific OpenShell CLI flags~~ — done (real
+`sandbox create/exec/delete` lifecycle, embedded baseline policy, site override
+via `sandbox_openshell_policy`); desktop host checks landed (`openshell_version` +
 `docker_host_networking` commands, Settings ▸ Security card). Frontend: zustand slices
 `sessionStore`, `activeSessionStore` and `runStore` landed (`src/stores/`); only
 the UI-prefs slice remains planned in `gui-state-zustand.md`.

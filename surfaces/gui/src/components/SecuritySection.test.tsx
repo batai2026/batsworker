@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+﻿import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { SecuritySection } from "./SecuritySection";
 import type { SecurityFinding } from "../api";
@@ -50,7 +50,7 @@ function mockEgressDefaults() {
   vi.mocked(getOpenShellStatus).mockResolvedValue({
     ok: true,
     available: false,
-    prefix: ["openshell", "exec", "--"],
+    prefix: ["openshell", "sandbox", "exec", "-n", "{sandbox}", "--workdir", "/workspace", "--"],
     backend: "docker",
   });
 }
@@ -162,7 +162,7 @@ describe("SecuritySection", () => {
     vi.mocked(getOpenShellStatus).mockResolvedValue({
       ok: true,
       available: false,
-      prefix: ["openshell", "exec", "--"],
+      prefix: ["openshell", "sandbox", "exec", "-n", "{sandbox}", "--workdir", "/workspace", "--"],
       backend: "docker",
     });
     // Mutable mock policy: add/remove update the list the component re-fetches.

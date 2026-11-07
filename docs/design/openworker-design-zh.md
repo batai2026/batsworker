@@ -1502,14 +1502,25 @@ OpenShell CLI 是按站点部署的，并且各不相同。
 
 **方案** —— 一个可配置适配器，带有与 Docker 相同的 v2 诚实性：
 
-- `OpenShellExecutor`（`coworker/tools/openshell.py`）实现 `Executor`。
-  - `sandbox_openshell_prefix`（config.toml，JSON argv 列表；默认
-    `["openshell", "exec", "--"]`）是命令占位符之前的全部内容。
+- `OpenShellExecutor`（`coworker/tools/openshell.py`）实现 `Executor`，并持有
+  真实 OpenShell 沙箱生命周期（NVIDIA OpenShell ≥ v0.1.x）：
+  - `sandbox_openshell_prefix`（config.toml，JSON argv 列表）是命令占位符之前
+    的全部内容，默认即真实 exec CLI：
+    `["openshell","sandbox","exec","-n","{sandbox}","--workdir","/workspace","--"]`。
+    占位符支持 `{workspace}` / `{image}` / `{network}` / `{sandbox}`
+    （受管沙箱名 `coworker-<pid>-<hash>`）。
+  - 首个命令时惰性创建沙箱：`openshell sandbox create --name {sandbox}
+    --from <image> --upload <workspace>:/workspace --policy <yaml> --detach`，
+    随后通过 exec `true` 探测就绪（沙箱离开 Provisioning 前 exec 报错）；
+    `close()` 时 `openshell sandbox delete <name>`（尽力而为）。
+  - 隔离由策略文件决定：`sandbox_openshell_policy` 指向站点 YAML；为空时用
+    内嵌基线（Landlock 隐藏未列路径、根只读仅 /workspace + /tmp 可写、
+    空 `network_policies` 即断网、`run_as_user: sandbox`）。
   - 可用性会被探测（`<prefix[0]> --version`）并缓存 30s。
   - 命令以 `<prefix> <command>` 运行，带非交互 env + 硬超时；结果携带
     `sandboxed: true`。
-  - 若 CLI 缺失或会话中途消失，回退到 `LocalExecutor` 并标记
-    `sandboxed: false` + `fallback_reason`。
+  - 若 CLI 缺失或会话中途消失、或 create 失败，回退到 `LocalExecutor` 并标记
+    `sandboxed: false` + `fallback_reason`（create 失败在会话内粘性，不反复重试）。
 - `agent.py::build_engine` 在 `sandbox_backend == "openshell"` 时选择它。
 - `GET /v1/settings/openshell/status` 报 `available` / `prefix` / `backend`
   供设置 UI 使用。
@@ -1548,14 +1559,18 @@ OpenShell CLI 是按站点部署的，并且各不相同。
 
 - `tests/test_egress.py`：策略添加/删除/子域匹配、持久化、工具往返、
   catalog 能力、API、权限引擎集成。
-- `tests/test_openshell.py`：prefix 解析、CLI 缺失回退、假 CLI 成功、
-  逐命令回退、状态 API。
+- `tests/test_openshell.py`：prefix 解析（真实 CLI 默认值）、占位符展开
+  （含 `{sandbox}`）、假 CLI 全生命周期（create argv / 就绪探测 / exec /
+  close 时 delete）、站点 policy 覆盖、create 失败回退、CLI 缺失回退、状态 API。
 - `scripts/security_drill.py` 把出网往返作为第 5/6 步演练。
 - 后端回归（security/connectors/subagents/skills/marketplaces）：通过。
 
 ### 15.6 后续事项（需真实环境）
 
-- 把实际的 OpenShell CLI 参数放进 `sandbox_openshell_prefix`。
+- ~~把实际的 OpenShell CLI 参数放进 `sandbox_openshell_prefix`~~ —— 已完成：
+  默认 prefix 即真实 NVIDIA CLI（`sandbox create/exec/delete` 生命周期），
+  隔离经 `sandbox_openshell_policy`（缺省内嵌基线）。剩余：在装有 OpenShell
+  的主机上实测。
 - 桌面主机检查已落地（`openshell_version` + `docker_host_networking` + GUI 卡片），
   仍需在装有 Docker Desktop / OpenShell 的机器上实测。
 - 在真实的 tag release 上验证 `ghcr.io` 推送。
@@ -2176,7 +2191,7 @@ App.tsx 从 **2,414 → 1,423 行**（行为完全相同的状态迁移）；`ts
 - **出网策略 UI**：Settings ▸ Security 卡片（列出/添加/移除已批准域名）+ OpenShell 后端状态行（`getOpenShellStatus`）。
 - **容器镜像**：`Dockerfile` + `.github/workflows/docker.yml` 在 tag 上发布 `ghcr.io/andrewyng/openworker:<tag>` + `latest`。
 - **e2e**：`security-tab.spec.ts` 覆盖出网卡片（添加/列表/移除），为 `/v1/egress/policy` 提供可变 fixture 路由。
-- 后续：把真实 OpenShell CLI 参数写入 `sandbox_openshell_prefix`；桌面主机检查已落地（`openshell_version` + `docker_host_networking` 命令与 Settings ▸ Security 卡片）。
+- 后续：~~把真实 OpenShell CLI 参数写入 `sandbox_openshell_prefix`~~ —— 已完成（真实 `sandbox create/exec/delete` 生命周期 + 内嵌基线 policy + `{sandbox}` 占位符）；桌面主机检查已落地（`openshell_version` + `docker_host_networking` 命令与 Settings ▸ Security 卡片）。
 
 ### 25.9 验证
 

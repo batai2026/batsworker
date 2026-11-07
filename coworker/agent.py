@@ -307,6 +307,7 @@ def build_engine(
                 image=config.sandbox_image,
                 network=config.sandbox_network,
                 prefix=config.sandbox_openshell_prefix,
+                policy=config.sandbox_openshell_policy,
             )
         elif config.sandbox_enabled and config.sandbox_backend == "docker":
             from .tools.sandbox import DockerExecutor, docker_available
