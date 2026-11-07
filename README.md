@@ -1,26 +1,20 @@
 # OpenWorker
 
-**[openworker.com](https://openworker.com)** · [Download](#download) · [Issues](https://github.com/andrewyng/openworker/issues)
+[Issues](https://github.com/batai2026/batsworker/issues)
 
-<a href="https://trendshift.io/repositories/91434?utm_source=trendshift-badge&amp;utm_medium=badge&amp;utm_campaign=badge-trendshift-91434" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/trendshift/repositories/91434/daily?language=Python" alt="andrewyng%2Fopenworker | Trendshift" width="250" height="55"/></a>
-
-> **Beta** - OpenWorker is in open beta: fully usable, updates itself, and we're actively polishing rough edges. [Issues](https://github.com/andrewyng/openworker/issues) welcome.
+> **Beta** - OpenWorker is in open beta: fully usable, updates itself, and we're actively polishing rough edges. [Issues](https://github.com/batai2026/batsworker/issues) welcome.
 
 **AI that gets your everyday tasks done.** OpenWorker is an open-source AI coworker that lives on your desktop and delivers **finished work**, not just chat: a polished document, a Slack reply with the numbers, an updated calendar, a triaged inbox.
 
 It runs on your machine and doesn't lock you into any model: bring your own API key for OpenAI, Anthropic, Google, or an open-weight provider, or run fully local with Ollama. Your data leaves your machine only through the model and integrations *you* choose.
 
-[![How OpenWorker works](docs/assets/how-it-works.png)](https://openworker.com)
+> **Naming** — three names, one project: the repository is `batai2026/batsworker`, the product is **OpenWorker**, and the Python distribution is published as `cowworker` (`0.2.1b`). Repo name, product name, and package name differ on purpose: `batsworker` is the hosting location, `OpenWorker` is the brand, and `cowworker` is the install name (`pip install coworker`).
 
-## Download
+## Provenance
 
-[**⬇ macOS (Apple Silicon)**](https://download.openworker.com/mac)
-<sub>macOS 12+ · signed & notarized · auto-updates</sub>
+This project is derived from [**`andrewyng/openworker`**](https://github.com/andrewyng/openworker) **version 0.2.1**, maintained and extended here as `batai2026/batsworker`. The upstream MIT license and copyright notice are retained — see [LICENSE](LICENSE). This repository is an independent derivative work and is not affiliated with or endorsed by the upstream authors.
 
-[**⬇ Windows 10/11 (x64)**](https://download.openworker.com/windows)
-<sub>builds are not yet code-signed, so SmartScreen will warn; signing is in progress</sub>
-
-Open the app, add a model key (or point it at Ollama), and ask for something real.
+![How OpenWorker works](docs/assets/how-it-works.png)
 
 ## How it works
 
@@ -67,8 +61,8 @@ OpenWorker is local-first. Everything lives on your machine: the agent loop, you
 Prerequisites: Python 3.10+, Node 20+, and (for the desktop shell) the Rust toolchain via [rustup](https://rustup.rs/).
 
 ```shell
-git clone https://github.com/andrewyng/openworker
-cd openworker
+git clone https://github.com/batai2026/batsworker
+cd batsworker
 
 # 1. One-time bootstrap - creates the Python venv at .venv
 #    (on Windows, run from Git Bash or WSL)
@@ -112,7 +106,7 @@ OpenWorker was originally developed inside the aisuite repository before moving 
 
 ## Contributing
 
-Contributions and bug reports are welcome - open an [issue](https://github.com/andrewyng/openworker/issues) or a pull request. The app updates itself, so fixes reach installs quickly.
+Contributions and bug reports are welcome - open an [issue](https://github.com/batai2026/batsworker/issues) or a pull request. The app updates itself, so fixes reach installs quickly.
 For any PR, please attach screenshots of what was broken and how it is fixed now. We will shortly add features that you can contribute to.
 Please note that we are actively developing based off a internal list and goal, so we may not approve PRs that add features that are already under-development or deviates from our vision.
 
