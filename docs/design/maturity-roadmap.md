@@ -127,20 +127,23 @@ Aligned with the upstream v0.3.1 release notes (OpenShell + egress policy):
   - API: `GET/POST /v1/egress/policy`, `DELETE /v1/egress/policy/{domain}`.
   - Registered as the `egress` catalog capability on all 7 security personas.
 - **OpenShell executor scaffolding** (`coworker/tools/openshell.py`):
-  configurable CLI prefix (`sandbox_openshell_prefix`, default `openshell exec --`),
-  cached availability probe, per-command v2 fallback to LocalExecutor with
+  configurable CLI prefix (`sandbox_openshell_prefix`, default `openshell exec --`
+  with `{workspace}` / `{image}` / `{network}` placeholders), cached availability
+  probe, per-command v2 fallback to LocalExecutor with
   `sandboxed: false` + `fallback_reason`. `agent.py` selects it when
   `sandbox_backend == "openshell"`.
 - Tests: `tests/test_egress.py` (policy/tool/capability/API/permission-engine),
-  `tests/test_openshell.py` (prefix parsing, fallback, fake-CLI success, status API).
+  `tests/test_openshell.py` (prefix parsing, placeholder expansion, fallback,
+  fake-CLI success, status API).
 - **Egress policy UI**: Settings ▸ Security card (list/add/remove approved domains)
   + OpenShell backend status line (`getOpenShellStatus`).
 - **Container image**: `Dockerfile` + `.github/workflows/docker.yml` publish
   `ghcr.io/andrewyng/openworker:<tag>` + `latest` on tags.
 - **e2e**: `security-tab.spec.ts` covers the egress card (add/list/remove) with
   mutable fixture routes for `/v1/egress/policy`.
-- Follow-ups: real OpenShell CLI flags in `sandbox_openshell_prefix`; desktop
-  OpenShell settings item (Tauri version/host-networking check).
+- Follow-ups: fill `sandbox_openshell_prefix` with the site's real CLI flags
+  (placeholders already wired); desktop OpenShell settings item (Tauri
+  version/host-networking check).
 
 ## Verification
 
@@ -210,6 +213,7 @@ migration held in reserve.
 
 Eval: run the real-model matrix once with keys and commit its baseline (the CI
 wiring and the deterministic stub lane landed in `.github/workflows/eval.yml`).
-Security: real OpenShell CLI flags in `sandbox_openshell_prefix`, desktop
-OpenShell settings item. Frontend: `zustand` migration only if the extracted
-hooks still leave App.tsx too large.
+Security: site-specific OpenShell CLI flags in `sandbox_openshell_prefix`
+(placeholders wired), desktop OpenShell settings item. Frontend: zustand pilot
+landed (`src/stores/sessionStore.ts`); remaining slices are planned in
+`gui-state-zustand.md` and stay gated on `App.tsx` size.

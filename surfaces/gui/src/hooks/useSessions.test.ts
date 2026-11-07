@@ -1,6 +1,7 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, renderHook, waitFor } from "@testing-library/react";
 import { useSessions, rememberLastSession, resumeTargetForAgent, readLastSessions } from "./useSessions";
+import { useSessionStore } from "../stores/sessionStore";
 import { getRecentWorkspaces, getSessions, PERSONAS_CHANGED } from "../api";
 
 vi.mock("../api", () => ({
@@ -20,6 +21,11 @@ const SESSIONS = [
 ] as any;
 
 const PROJECTS = [{ path: "/ws/launch", exists: true }] as any;
+
+// store 是模块级单例：每个用例前清空，避免上一个用例的列表泄漏到下一条断言。
+beforeEach(() => {
+  useSessionStore.setState({ sessions: [], projects: [] });
+});
 
 afterEach(() => {
   cleanup();
