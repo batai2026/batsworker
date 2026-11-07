@@ -197,8 +197,9 @@ def _requests_by_turn(records: list[dict[str, Any]]) -> dict[int, dict[str, int]
     return out
 
 
-def _tool_calls_by_turn(records: list[dict[str, Any]]) -> dict[int, int]:
-    out: dict[int, int] = {}
+def _tool_calls_by_turn(records: list[dict[str, Any]]) -> dict[int, list[str]]:
+    """每个 turn 实际发生的 tool_call 名称序列（按账本顺序）。"""
+    out: dict[int, list[str]] = {}
     for row in records:
         if row.get("kind") != "tool_call":
             continue
@@ -206,7 +207,8 @@ def _tool_calls_by_turn(records: list[dict[str, Any]]) -> dict[int, int]:
             turn = int(row.get("turn") or 0)
         except (TypeError, ValueError):
             turn = 0
-        out[turn] = out.get(turn, 0) + 1
+        name = str((row.get("data") or {}).get("name") or "")
+        out.setdefault(turn, []).append(name)
     return out
 
 
@@ -267,7 +269,9 @@ async def _run_cell(
         item["model"] = data.get("model", "")
         item["tools"] = data.get("tools", [])
         item["requests"] = data.get("requests", 0)
-        item["tool_calls"] = tool_calls.get(int(item["turn"]) or 0, 0)
+        names = tool_calls.get(int(item["turn"]) or 0, [])
+        item["tool_calls"] = len(names)
+        item["tool_names"] = names
     return {
         "harness": spec.name,
         "model": model,
@@ -342,6 +346,48 @@ def _temp_dir() -> Path:
     return Path(tempfile.mkdtemp(prefix="coworker-eval-"))
 
 
+# -- 基线对比（--case，P2-11） ---------------------------------------------------
+
+
+def compare_baseline(
+    cell: dict[str, Any], baseline: dict[str, Any]
+) -> list[dict[str, Any]]:
+    """把一个 cell 的逐 turn 结果与 capture 基线对齐比较（仅参照，不作断言）。"""
+    base_by_turn: dict[int, dict[str, Any]] = {}
+    for item in baseline.get("turns") or []:
+        try:
+            base_by_turn[int(item.get("turn") or 0)] = item
+        except (TypeError, ValueError):
+            continue
+    diffs: list[dict[str, Any]] = []
+    for item in cell.get("turns") or []:
+        try:
+            turn = int(item.get("turn") or 0)
+        except (TypeError, ValueError):
+            continue
+        base = base_by_turn.get(turn) or {}
+        base_tools = list(base.get("tools") or [])
+        # 对比的是实际发生的 tool_call 名称序列（tool_names），不是模型面工具列表
+        # （tools 由 harness 决定，与录制时不同不算偏差）。
+        tools = list(item.get("tool_names") or [])
+        base_bytes = int(base.get("bytes") or 0)
+        bytes_now = int(item.get("bytes") or 0)
+        diffs.append(
+            {
+                "turn": turn,
+                "bytes": bytes_now,
+                "base_bytes": base_bytes,
+                "bytes_delta": bytes_now - base_bytes,
+                "tool_calls": int(item.get("tool_calls") or 0),
+                "base_tool_calls": int(base.get("tool_calls") or 0),
+                "tools": tools,
+                "base_tools": base_tools,
+                "tools_match": tools == base_tools,
+            }
+        )
+    return diffs
+
+
 # -- CLI ----------------------------------------------------------------------
 
 
@@ -351,6 +397,10 @@ def main(argv: Optional[list[str]] = None) -> int:
         description="用录制轨迹跑「模型 × harness」矩阵评测",
     )
     parser.add_argument("--session", help="录制的会话 id（conversations/<id>.jsonl）")
+    parser.add_argument(
+        "--case",
+        help="capture 导出的评测输入包目录（messages.jsonl + baseline.json）；与 --session 互斥",
+    )
     parser.add_argument("--conv-dir", help="会话消息目录（默认 <state>/conversations）")
     parser.add_argument("--trajectory-dir", help="轨迹账本目录（默认 <state>/trajectory）")
     parser.add_argument("--models", help="逗号分隔的模型 id，如 openai:gpt-5.6-sol,anthropic:claude-opus-4-8")
@@ -384,13 +434,28 @@ def main(argv: Optional[list[str]] = None) -> int:
             return 2
         models = ["stub:model"]
 
-    if not args.session:
-        print("--session is required (recorded session id)", file=sys.stderr)
+    if args.session and args.case:
+        print("--case and --session are mutually exclusive", file=sys.stderr)
         return 2
 
-    turns = recorded_turns(
-        args.session, conv_dir=args.conv_dir, trajectory_dir=args.trajectory_dir
-    )
+    baseline: Optional[dict[str, Any]] = None
+    if args.case:
+        from .capture import load_case  # 延迟导入：capture 顶层依赖本模块
+
+        turns, baseline = load_case(args.case)
+        if not turns:
+            print(
+                f"no turns found in case {args.case!r} (missing messages.jsonl?)",
+                file=sys.stderr,
+            )
+            return 2
+    else:
+        if not args.session:
+            print("--session is required (recorded session id), or pass --case", file=sys.stderr)
+            return 2
+        turns = recorded_turns(
+            args.session, conv_dir=args.conv_dir, trajectory_dir=args.trajectory_dir
+        )
     if args.max_turns:
         turns = turns[: args.max_turns]
     if not turns:
@@ -413,6 +478,15 @@ def main(argv: Optional[list[str]] = None) -> int:
             out_path=args.out,
         )
     )
+    if baseline is not None:
+        report["baseline"] = baseline
+        for cell in report["cells"]:
+            cell["vs_baseline"] = compare_baseline(cell, baseline)
+        if args.out:  # run_matrix 已先行落盘，对比字段补上后需重写
+            target = Path(args.out).expanduser()
+            target.write_text(
+                json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8"
+            )
     for cell in report["cells"]:
         digests = [t.get("digest", "")[:12] for t in cell["turns"]]
         print(
@@ -421,6 +495,13 @@ def main(argv: Optional[list[str]] = None) -> int:
         )
         if cell.get("error"):
             print(f"  error: {cell['error']}")
+        for diff in cell.get("vs_baseline") or []:
+            mark = "ok" if diff["tools_match"] else "tools≠"
+            print(
+                f"  turn {diff['turn']}: bytes {diff['bytes']} vs base "
+                f"{diff['base_bytes']} (Δ{diff['bytes_delta']:+d}), "
+                f"tool_calls {diff['tool_calls']}/{diff['base_tool_calls']} [{mark}]"
+            )
     return 0 if all(c["status"] == "ok" for c in report["cells"]) else 1
 
 
