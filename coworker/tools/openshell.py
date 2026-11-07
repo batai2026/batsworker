@@ -7,6 +7,9 @@ testable without the real CLI:
 - The argv prefix is configurable via ``sandbox_openshell_prefix`` (a JSON list in
   config.toml, overridable by the GUI sandbox settings / env). It defaults to
   ``["openshell", "exec", "--"]`` — everything up to the command placeholder.
+  Tokens may reference ``{workspace}`` / ``{image}`` / ``{network}``; they are
+  expanded at construction so a site's real CLI flags can mount the workspace,
+  pick the image and isolate the network without hardcoding paths here.
 - Availability is probed with ``<prefix[0]> --version`` at first use (cached), so a
   machine without OpenShell never wedges the agent.
 - Each command runs as ``<prefix> <command>`` with the same non-interactive env and
@@ -17,8 +20,7 @@ testable without the real CLI:
   exactly like the Docker v2 per-command probe.
 
 NOTE: the real OpenShell CLI flags belong in ``sandbox_openshell_prefix``; the
-fallback/selection/result plumbing here is complete and unit-tested.
-"""
+fallback/selection/result plumbing here is complete and unit-tested."""
 
 from __future__ import annotations
 
@@ -49,6 +51,22 @@ def _parse_prefix(raw: Optional[str]) -> list[str]:
     return list(_DEFAULT_PREFIX)
 
 
+def expand_prefix(prefix: list[str], *, workspace: str, image: str, network: str) -> list[str]:
+    """Render ``{workspace}`` / ``{image}`` / ``{network}`` inside each argv token.
+
+    Plain literal replacement (not ``str.format``): unknown braces such as ``{gpu}``
+    stay untouched instead of raising, and placeholders may sit inside a token
+    (``--mount={workspace}:/workspace``).
+    """
+    values = {"{workspace}": workspace, "{image}": image, "{network}": network}
+    rendered: list[str] = []
+    for token in prefix:
+        for key, value in values.items():
+            token = token.replace(key, value)
+        rendered.append(token)
+    return rendered
+
+
 class OpenShellExecutor(Executor):
     """Runs shell commands inside an OpenShell sandbox (configurable CLI prefix)."""
 
@@ -70,6 +88,9 @@ class OpenShellExecutor(Executor):
             if isinstance(prefix, list)
             else _parse_prefix(prefix if isinstance(prefix, str) else None)
         )
+        self.argv_prefix = expand_prefix(
+            self.prefix, workspace=self.workspace, image=self.image, network=self.network
+        )
         self.default_timeout = default_timeout
         self.max_output_chars = max_output_chars
         self._fallback: Optional[LocalExecutor] = None
@@ -83,7 +104,7 @@ class OpenShellExecutor(Executor):
         now = time.monotonic()
         if self._probe_cache is not None and now - self._probe_at < 30:
             return self._probe_cache
-        exe = self.prefix[0]
+        exe = self.argv_prefix[0]
         if shutil.which(exe) is None:
             self._probe_cache = False
             self._probe_at = now
@@ -153,7 +174,7 @@ class OpenShellExecutor(Executor):
                 timeout,
                 "OpenShell CLI not found — ran locally (sandbox unavailable)",
             )
-        cmd = [*self.prefix, command]
+        cmd = [*self.argv_prefix, command]
         try:
             proc = subprocess.run(
                 cmd,

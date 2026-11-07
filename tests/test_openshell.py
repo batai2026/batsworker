@@ -11,7 +11,7 @@ from __future__ import annotations
 import subprocess as _sp
 
 
-from coworker.tools.openshell import OpenShellExecutor, _parse_prefix
+from coworker.tools.openshell import OpenShellExecutor, _parse_prefix, expand_prefix
 
 
 def test_parse_prefix():
@@ -19,6 +19,30 @@ def test_parse_prefix():
     assert _parse_prefix("not json") == ["openshell", "exec", "--"]
     assert _parse_prefix(None) == ["openshell", "exec", "--"]
     assert _parse_prefix("[1,2]") == ["openshell", "exec", "--"]
+
+
+def test_expand_prefix_placeholders():
+    prefix = [
+        "openshell", "exec", "--mount", "{workspace}:/workspace",
+        "--image", "{image}", "--network", "{network}", "--",
+    ]
+    assert expand_prefix(prefix, workspace="/ws", image="site/img:1", network="bridge") == [
+        "openshell", "exec", "--mount", "/ws:/workspace",
+        "--image", "site/img:1", "--network", "bridge", "--",
+    ]
+
+
+def test_expand_prefix_keeps_unknown_braces_and_mixed_tokens():
+    out = expand_prefix(
+        ["{image}", "{gpu}", "{network}-{workspace}"],
+        workspace="/w", image="img", network="none",
+    )
+    assert out == ["img", "{gpu}", "none-/w"]
+
+
+def test_expand_prefix_without_placeholders_is_identity():
+    prefix = ["openshell", "exec", "--"]
+    assert expand_prefix(prefix, workspace="/w", image="i", network="n") == prefix
 
 
 def test_openshell_falls_back_when_cli_missing(tmp_path, monkeypatch):
@@ -53,6 +77,47 @@ def test_openshell_runs_with_fake_cli(tmp_path, monkeypatch):
     assert res["sandboxed"] is True
     assert "sandboxed-ok" in res.get("output", "")
     assert res["exit_code"] == 0
+
+
+def test_openshell_expands_placeholders_into_argv(tmp_path, monkeypatch):
+    """Site flags in the prefix receive the real workspace / image / network."""
+    import coworker.tools.openshell as oshell
+
+    monkeypatch.setattr(oshell.shutil, "which", lambda name: "/fake/openshell")
+    calls = []
+
+    def _fake_run(cmd, *args, **kwargs):
+        calls.append(list(cmd))
+
+        class _R:
+            returncode = 0
+            stdout = "sandboxed-ok\n"
+            stderr = ""
+
+        return _R()
+
+    monkeypatch.setattr(_sp, "run", _fake_run)
+    ex = OpenShellExecutor(
+        workspace=tmp_path,
+        image="site/image:latest",
+        network="bridge",
+        prefix=[
+            "openshell", "exec", "--mount", "{workspace}:/workspace",
+            "--image", "{image}", "--network", "{network}", "--",
+        ],
+    )
+    res = ex.run("echo hi", timeout=5)
+    assert res["sandboxed"] is True
+
+    argv = calls[-1]
+    assert argv[:6] == [
+        "openshell", "exec", "--mount",
+        f"{ex.workspace}:/workspace", "--image", "site/image:latest",
+    ]
+    assert argv[6:8] == ["--network", "bridge"]
+    assert argv[-2:] == ["--", "echo hi"]
+    # 原始 prefix 不被改写（状态接口返回用户配置的意图）
+    assert "{workspace}" in ex.prefix[3]
 
 
 def test_openshell_per_command_fallback_on_cli_loss(tmp_path, monkeypatch):

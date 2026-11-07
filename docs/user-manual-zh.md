@@ -546,7 +546,7 @@ Agent 在会话中创建的文件（报告、代码、HTML 页面等）会出现
 
 - **威胁模型**：安全协作者在分类前会阅读的可编辑文档（In scope / Out of scope / 可达性规则 / 缓解偏好）。
 - **发现跟踪**：每个真实发现关联修复 PR，状态 `open → fixing → fixed → closed` 跟踪到关闭。
-- **沙箱**：启用后 shell 命令在容器中运行（无网络、只读根文件系统）；支持 `docker` 与 `openshell` 两种后端（`openshell` 需在 `sandbox_openshell_prefix` 配置实际 CLI）。
+- **沙箱**：启用后 shell 命令在容器中运行（无网络、只读根文件系统）；支持 `docker` 与 `openshell` 两种后端（`openshell` 需在 `sandbox_openshell_prefix` 配置实际 CLI；prefix 的每个参数可用 `{workspace}` / `{image}` / `{network}` 占位符引用工作区、镜像与网络配置）。
 - **出口策略（egress policy）**：当被屏蔽的站点是任务所需时，协作者会调用 `request_egress` 并等待批准；批准的域名列在这里，之后访问不再询问。可手动添加/移除域名。
 
 ---

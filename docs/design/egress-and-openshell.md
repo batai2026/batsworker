@@ -42,7 +42,12 @@ OpenShell CLI is site-deployed and varies.
 - `OpenShellExecutor` (`coworker/tools/openshell.py`) implements `Executor`.
   - `sandbox_openshell_prefix` (config.toml, JSON argv list; default
     `["openshell", "exec", "--"]`) is everything up to the command placeholder.
-  - Availability is probed (`<prefix[0]> --version`) and cached 30s.
+  - Each token may reference `{workspace}`, `{image}`, `{network}`; they expand
+    to the resolved workspace path and `sandbox_image` / `sandbox_network` at
+    construction (literal replacement, so unknown braces like `{gpu}` survive).
+    Example:
+    `["openshell","exec","--mount","{workspace}:/workspace","--image","{image}","--network","{network}","--"]`
+  - Availability is probed (`<prefix[0]> --version`, expanded) and cached 30s.
   - Commands run as `<prefix> <command>` with the non-interactive env + hard
     timeout; results carry `sandboxed: true`.
   - If the CLI is missing or vanishes mid-session, it falls back to
@@ -62,14 +67,16 @@ OpenShell CLI is site-deployed and varies.
 
 - `tests/test_egress.py`: policy add/remove/subdomain matching, persistence, tool
   round-trip, catalog capability, API, permission-engine integration.
-- `tests/test_openshell.py`: prefix parsing, CLI-missing fallback, fake-CLI
-  success, per-command fallback, status API.
+- `tests/test_openshell.py`: prefix parsing, placeholder expansion (pure +
+  argv capture), CLI-missing fallback, fake-CLI success, per-command fallback,
+  status API.
 - `scripts/security_drill.py` exercises the egress round-trip as step 5/6.
 - Backend regression (security/connectors/subagents/skills/marketplaces): passed.
 
 ## Follow-ups (need real environments)
 
-- Put the actual OpenShell CLI flags into `sandbox_openshell_prefix`.
+- Fill `sandbox_openshell_prefix` with the site's real CLI flags (the adapter
+  already expands `{workspace}` / `{image}` / `{network}`).
 - Desktop Tauri settings item: OpenShell version + Docker Desktop host-networking
   check (Rust commands + GUI card).
 - Verify `ghcr.io` push on a real tag release.

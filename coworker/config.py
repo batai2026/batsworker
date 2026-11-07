@@ -99,7 +99,8 @@ class Config:
     # the host shell. "docker" backend requires Docker CLI + daemon; "openshell"
     # backend runs commands inside an NVIDIA OpenShell sandbox (CLI configurable
     # via sandbox_openshell_prefix, a JSON argv list ending at the command
-    # placeholder). The workspace is mounted read-write; network is isolated;
+    # placeholder; tokens may use {workspace}/{image}/{network} placeholders).
+    # The workspace is mounted read-write; network is isolated;
     # root FS is read-only. Both fall back to LocalExecutor when unavailable.
     sandbox_enabled: bool = False
     sandbox_backend: str = "docker"
