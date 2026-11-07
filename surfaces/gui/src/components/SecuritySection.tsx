@@ -18,6 +18,12 @@ import {
   type SandboxSettings,
   type SecurityFinding,
 } from "../api";
+import {
+  getDockerHostNetworking,
+  getOpenShellVersion,
+  isTauri,
+  type DockerHostNetworkingStatus,
+} from "../tauri";
 import { useI18n } from "../i18n";
 import { PanelHead } from "./IntegrationsView";
 
@@ -245,6 +251,11 @@ export function SecuritySection() {
         </div>
       </div>
 
+      {/* Desktop-only capability checks: the OpenShell CLI version and Docker Desktop's
+          host-networking toggle. Both are read by the Tauri shell (browser builds have no
+          direct view of the host), so the card is hidden outside the desktop app. */}
+      {isTauri() && <DesktopSandboxChecks />}
+
       {/* Egress policy (P0): persistent allowlist of network destinations that
           request_egress adds once the user approves. Approved domains auto-run. */}
       <div className={CARD + " p-4 mb-4"} data-testid="egress-card">
@@ -418,5 +429,72 @@ export function SecuritySection() {
         )}
       </div>
     </section>
+  );
+}
+
+// Desktop-only: the shell probes the host's OpenShell CLI and Docker Desktop settings file
+// (see src-tauri/src/lib.rs). Everything here is read-only and degrades to "unknown" when a
+// probe is unavailable, so a machine without either tool still renders a stable card.
+function DesktopSandboxChecks() {
+  const { t } = useI18n();
+  const [version, setVersion] = useState<string | null>(null);
+  const [docker, setDocker] = useState<DockerHostNetworkingStatus | null>(null);
+  const [checking, setChecking] = useState(true);
+
+  const refresh = async () => {
+    setChecking(true);
+    const [nextVersion, nextDocker] = await Promise.all([
+      getOpenShellVersion(),
+      getDockerHostNetworking(),
+    ]);
+    setVersion(nextVersion);
+    setDocker(nextDocker);
+    setChecking(false);
+  };
+
+  useEffect(() => {
+    void refresh();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const dockerState = !docker
+    ? t("Checking…")
+    : docker.host_networking === true
+      ? t("Host networking is enabled.")
+      : docker.host_networking === false
+        ? t("Host networking is disabled — enable it in Docker Desktop ▸ Settings ▸ Resources ▸ Network.")
+        : docker.docker_cli
+          ? t("Host networking preference could not be read.")
+          : t("Docker CLI not found — install Docker Desktop to use the Docker sandbox.");
+
+  return (
+    <div className={CARD + " p-4 mb-4"} data-testid="desktop-checks-card">
+      <div className="flex items-center gap-2">
+        <div className={FIELD_LABEL + " flex-1"}>{t("Desktop sandbox checks")}</div>
+        <button
+          className={BTN_BORDERED}
+          onClick={refresh}
+          disabled={checking}
+          data-testid="desktop-checks-refresh"
+        >
+          {t("Refresh")}
+        </button>
+      </div>
+      <div className={FIELD_HELP}>
+        {t("Runs on this computer — OpenShell CLI version and Docker Desktop host-networking preference.")}
+      </div>
+      <div className="mt-3 space-y-1.5 text-[13px]">
+        <div className="flex items-center gap-2">
+          <span className="text-muted shrink-0">{t("OpenShell CLI")}</span>
+          <span className="font-mono min-w-0 truncate" data-testid="openshell-version">
+            {checking ? t("Checking…") : version || t("Not detected")}
+          </span>
+        </div>
+        <div data-testid="docker-host-networking">{dockerState}</div>
+        {docker?.settings_path && (
+          <div className="text-[11px] text-faint font-mono truncate">{docker.settings_path}</div>
+        )}
+      </div>
+    </div>
   );
 }

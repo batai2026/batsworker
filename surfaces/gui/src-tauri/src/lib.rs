@@ -396,6 +396,162 @@ fn start_window_drag(window: tauri::WebviewWindow) -> bool {
     window.start_dragging().is_ok()
 }
 
+// -- sandbox capability checks (Settings ▸ Security) -------------------------------------------
+// The desktop shell is the only place that can inspect the host's own setup: the OpenShell CLI
+// version and Docker Desktop's host-networking preference (needed when the sandbox network is
+// "host"). Both are read-only probes run off the UI thread; every failure degrades to
+// None/false rather than an error. The browser build never calls these (the card is desktop-only).
+
+/// Docker Desktop keeps the "Enable host networking" toggle in a JSON settings file. The
+/// documented key is `hostNetworkingEnabled`; the other spellings are tolerated in case a
+/// release renames it. A non-bool value counts as unknown, not as disabled.
+fn host_networking_from_settings(raw: &str) -> Option<bool> {
+    let parsed: serde_json::Value = serde_json::from_str(raw).ok()?;
+    for key in [
+        "hostNetworkingEnabled",
+        "EnableHostNetworking",
+        "enableHostNetworking",
+    ] {
+        if let Some(value) = parsed.get(key).and_then(|v| v.as_bool()) {
+            return Some(value);
+        }
+    }
+    None
+}
+
+/// Candidate locations of Docker Desktop's settings file (first existing wins). Order matches
+/// docs.docker.com/desktop/settings-and-maintenance/settings: the newer `settings-store.json`
+/// first, the older `settings.json` kept as a fallback.
+fn docker_settings_paths() -> Vec<PathBuf> {
+    let mut paths = Vec::new();
+    if cfg!(target_os = "macos") {
+        if let Ok(home) = std::env::var("HOME") {
+            let dir = PathBuf::from(home).join("Library/Group Containers/group.com.docker");
+            paths.push(dir.join("settings-store.json"));
+            paths.push(dir.join("settings.json"));
+        }
+    } else if cfg!(target_os = "windows") {
+        if let Ok(appdata) = std::env::var("APPDATA") {
+            let dir = PathBuf::from(appdata).join("Docker");
+            paths.push(dir.join("settings-store.json"));
+            paths.push(dir.join("settings.json"));
+        }
+    } else if let Ok(home) = std::env::var("HOME") {
+        paths.push(PathBuf::from(home).join(".docker/desktop/settings-store.json"));
+    }
+    paths
+}
+
+#[derive(Serialize)]
+struct DockerHostNetworking {
+    docker_cli: bool,
+    host_networking: Option<bool>,
+    settings_path: Option<String>,
+}
+
+fn docker_host_networking_probe() -> DockerHostNetworking {
+    let mut settings_path = None;
+    let mut host_networking = None;
+    for path in docker_settings_paths() {
+        if !path.is_file() {
+            continue;
+        }
+        if let Ok(raw) = std::fs::read_to_string(&path) {
+            host_networking = host_networking_from_settings(&raw);
+            settings_path = Some(path.to_string_lossy().to_string());
+        }
+        break;
+    }
+    let docker_cli = Command::new("docker")
+        .arg("--version")
+        .envs(sidecar_env())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .map(|status| status.success())
+        .unwrap_or(false);
+    DockerHostNetworking {
+        docker_cli,
+        host_networking,
+        settings_path,
+    }
+}
+
+fn openshell_version_probe() -> Option<String> {
+    let output = Command::new("openshell")
+        .arg("--version")
+        .envs(sidecar_env())
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    stdout
+        .lines()
+        .map(str::trim)
+        .find(|line| !line.is_empty())
+        .map(|line| line.to_string())
+}
+
+#[tauri::command]
+async fn openshell_version() -> Option<String> {
+    tauri::async_runtime::spawn_blocking(openshell_version_probe)
+        .await
+        .ok()
+        .flatten()
+}
+
+#[tauri::command]
+async fn docker_host_networking() -> DockerHostNetworking {
+    tauri::async_runtime::spawn_blocking(docker_host_networking_probe)
+        .await
+        .unwrap_or(DockerHostNetworking {
+            docker_cli: false,
+            host_networking: None,
+            settings_path: None,
+        })
+}
+
+#[cfg(test)]
+mod sandbox_check_tests {
+    use super::host_networking_from_settings;
+
+    #[test]
+    fn reads_the_documented_key() {
+        assert_eq!(
+            host_networking_from_settings(r#"{"hostNetworkingEnabled": true}"#),
+            Some(true)
+        );
+        assert_eq!(
+            host_networking_from_settings(r#"{"hostNetworkingEnabled": false}"#),
+            Some(false)
+        );
+    }
+
+    #[test]
+    fn tolerates_alternate_spellings() {
+        assert_eq!(
+            host_networking_from_settings(r#"{"EnableHostNetworking": true}"#),
+            Some(true)
+        );
+        assert_eq!(
+            host_networking_from_settings(r#"{"enableHostNetworking": false}"#),
+            Some(false)
+        );
+    }
+
+    #[test]
+    fn unknown_or_malformed_is_none() {
+        assert_eq!(host_networking_from_settings("not json"), None);
+        assert_eq!(
+            host_networking_from_settings(r#"{"hostNetworkingEnabled": "yes"}"#),
+            None
+        );
+        assert_eq!(host_networking_from_settings("{}"), None);
+    }
+}
+
 // -- local dictation ---------------------------------------------------------------------------
 // The actual microphone/model code lives in the Tauri-free `ocw-stt` crate. This shell owns the
 // macOS permission prompt and translates the reusable API into React-friendly Tauri commands.
@@ -729,6 +885,8 @@ pub fn run() {
             get_keep_awake,
             set_keep_awake,
             start_window_drag,
+            openshell_version,
+            docker_host_networking,
             get_dictation_status,
             start_dictation,
             stop_dictation,

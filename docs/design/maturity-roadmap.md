@@ -142,8 +142,9 @@ Aligned with the upstream v0.3.1 release notes (OpenShell + egress policy):
 - **e2e**: `security-tab.spec.ts` covers the egress card (add/list/remove) with
   mutable fixture routes for `/v1/egress/policy`.
 - Follow-ups: fill `sandbox_openshell_prefix` with the site's real CLI flags
-  (placeholders already wired); desktop OpenShell settings item (Tauri
-  version/host-networking check).
+  (placeholders already wired); desktop OpenShell checks landed (Tauri
+  `openshell_version` / `docker_host_networking` + Settings ▸ Security card,
+  desktop-only).
 
 ## Verification
 
@@ -214,6 +215,7 @@ flags; the frontend's zustand migration is under way (two slices landed, see
 Eval: run the real-model matrix once with keys and commit its baseline (the CI
 wiring and the deterministic stub lane landed in `.github/workflows/eval.yml`).
 Security: site-specific OpenShell CLI flags in `sandbox_openshell_prefix`
-(placeholders wired), desktop OpenShell settings item. Frontend: zustand slices
+(placeholders wired); desktop host checks landed (`openshell_version` +
+`docker_host_networking` commands, Settings ▸ Security card). Frontend: zustand slices
 `sessionStore` and `activeSessionStore` landed (`src/stores/`); `runStore` and
 the UI-prefs slice remain planned in `gui-state-zustand.md`.

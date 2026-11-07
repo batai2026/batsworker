@@ -14,6 +14,7 @@ import {
   saveThreatModel,
   setSandboxSettings,
 } from "../api";
+import { getDockerHostNetworking, getOpenShellVersion, isTauri } from "../tauri";
 
 vi.mock("../api", () => ({
   getThreatModel: vi.fn(),
@@ -31,9 +32,17 @@ vi.mock("../api", () => ({
   getOpenShellStatus: vi.fn(),
 }));
 
+vi.mock("../tauri", () => ({
+  isTauri: vi.fn(() => false),
+  getOpenShellVersion: vi.fn(),
+  getDockerHostNetworking: vi.fn(),
+}));
+
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
+  // The desktop-shell test flips this; every other case runs as the browser build.
+  vi.mocked(isTauri).mockReturnValue(false);
 });
 
 function mockEgressDefaults() {
@@ -183,5 +192,40 @@ describe("SecuritySection", () => {
     fireEvent.click(screen.getByTestId("egress-remove-api.acme.com"));
     await waitFor(() => expect(removeEgressDomain).toHaveBeenCalledWith("api.acme.com"));
     await waitFor(() => expect(screen.getByTestId("egress-empty")).toBeTruthy());
+  });
+
+  it("shows the desktop sandbox checks only in the desktop shell", async () => {
+    vi.mocked(getThreatModel).mockResolvedValue({ content: "# TM\n" });
+    vi.mocked(getSecurityFindings).mockResolvedValue([]);
+    vi.mocked(getSandboxSettings).mockResolvedValue({
+      enabled: false,
+      backend: "docker",
+      image: "python:3.12-slim",
+      network: "none",
+    });
+    mockEgressDefaults();
+
+    // Browser build: no host access, so the card stays hidden.
+    render(<SecuritySection />);
+    await waitFor(() => expect(screen.getByTestId("sandbox-card")).toBeTruthy());
+    expect(screen.queryByTestId("desktop-checks-card")).toBeNull();
+    cleanup();
+
+    // Desktop shell: both probes render (OpenShell version + Docker host networking).
+    vi.mocked(isTauri).mockReturnValue(true);
+    vi.mocked(getOpenShellVersion).mockResolvedValue("openshell 0.4.2");
+    vi.mocked(getDockerHostNetworking).mockResolvedValue({
+      docker_cli: true,
+      host_networking: false,
+      settings_path: "/Users/me/Library/Group Containers/group.com.docker/settings-store.json",
+    });
+    render(<SecuritySection />);
+    await waitFor(() => expect(screen.getByTestId("desktop-checks-card")).toBeTruthy());
+    await waitFor(() =>
+      expect(screen.getByTestId("openshell-version").textContent).toContain("openshell 0.4.2"),
+    );
+    expect(screen.getByTestId("docker-host-networking").textContent).toContain(
+      "Host networking is disabled",
+    );
   });
 });

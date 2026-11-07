@@ -1521,7 +1521,30 @@ OpenShell CLI 是按站点部署的，并且各不相同。
 - `.github/workflows/docker.yml` 在 `v*` tag 上构建并推送
   `ghcr.io/andrewyng/openworker:<tag>` + `latest`。
 
-### 15.4 验证
+### 15.4 桌面端主机检查（Tauri）
+
+浏览器构建只能看到 sidecar 的间接状态，因此桌面壳暴露两个**只读**探测命令，
+由 Settings ▸ Security 的桌面专属卡片展示：
+
+- `openshell_version`（`src-tauri/src/lib.rs`）：执行 `openshell --version`，使用
+  用户真实 PATH（`sidecar_env()`，Finder 启动也能找到 Homebrew 安装），返回首个
+  非空行；不存在则 `null`。
+- `docker_host_networking`：读取 Docker Desktop 设置文件（优先
+  `settings-store.json`，回退 `settings.json`；macOS
+  `~/Library/Group Containers/group.com.docker/`、Windows `%APPDATA%\Docker\`、
+  Linux `~/.docker/desktop/`），返回：
+
+  | 字段 | 含义 |
+  |---|---|
+  | `docker_cli` | `docker --version` 是否可执行 |
+  | `host_networking` | `hostNetworkingEnabled`（兼容 `EnableHostNetworking` / `enableHostNetworking`）；`null` 表示未知，不当作关闭 |
+  | `settings_path` | 实际读取的设置文件（不存在为 `null`） |
+
+两个命令都在 `spawn_blocking` 中执行，任何失败都降级为 `null` / `false`。卡片
+（`SecuritySection.tsx` 的 `desktop-checks-card`）仅在 `isTauri()` 为真时渲染，
+浏览器 GUI 行为不变；`sandbox_network = "host"` 时才需要 host networking。
+
+### 15.5 验证
 
 - `tests/test_egress.py`：策略添加/删除/子域匹配、持久化、工具往返、
   catalog 能力、API、权限引擎集成。
@@ -1530,11 +1553,11 @@ OpenShell CLI 是按站点部署的，并且各不相同。
 - `scripts/security_drill.py` 把出网往返作为第 5/6 步演练。
 - 后端回归（security/connectors/subagents/skills/marketplaces）：通过。
 
-### 15.5 后续事项（需真实环境）
+### 15.6 后续事项（需真实环境）
 
 - 把实际的 OpenShell CLI 参数放进 `sandbox_openshell_prefix`。
-- 桌面 Tauri 设置项：OpenShell 版本 + Docker Desktop host-networking
-  检查（Rust 命令 + GUI 卡片）。
+- 桌面主机检查已落地（`openshell_version` + `docker_host_networking` + GUI 卡片），
+  仍需在装有 Docker Desktop / OpenShell 的机器上实测。
 - 在真实的 tag release 上验证 `ghcr.io` 推送。
 
 ---
@@ -2153,7 +2176,7 @@ App.tsx 从 **2,414 → 1,423 行**（行为完全相同的状态迁移）；`ts
 - **出网策略 UI**：Settings ▸ Security 卡片（列出/添加/移除已批准域名）+ OpenShell 后端状态行（`getOpenShellStatus`）。
 - **容器镜像**：`Dockerfile` + `.github/workflows/docker.yml` 在 tag 上发布 `ghcr.io/andrewyng/openworker:<tag>` + `latest`。
 - **e2e**：`security-tab.spec.ts` 覆盖出网卡片（添加/列表/移除），为 `/v1/egress/policy` 提供可变 fixture 路由。
-- 后续：把真实 OpenShell CLI 参数写入 `sandbox_openshell_prefix`；桌面 OpenShell 设置项（Tauri 版本/宿主网络检查）。
+- 后续：把真实 OpenShell CLI 参数写入 `sandbox_openshell_prefix`；桌面主机检查已落地（`openshell_version` + `docker_host_networking` 命令与 Settings ▸ Security 卡片）。
 
 ### 25.9 验证
 
@@ -2196,4 +2219,4 @@ App.tsx 从 **2,414 → 1,423 行**（行为完全相同的状态迁移）；`ts
 
 ### 25.12 后续（P2）
 
-评测：用密钥运行一次真实模型矩阵并提交其基线（CI 接线与确定性 stub lane 已落地于 `.github/workflows/eval.yml`）。安全：`sandbox_openshell_prefix` 中的真实 OpenShell CLI 参数、桌面 OpenShell 设置项。前端：`sessionStore`（会话列表）与 `activeSessionStore`（活动会话）两个切片已落地，`runStore` 与 UI 偏好切片仍列入 `gui-state-zustand.md` 计划。
+评测：用密钥运行一次真实模型矩阵并提交其基线（CI 接线与确定性 stub lane 已落地于 `.github/workflows/eval.yml`）。安全：`sandbox_openshell_prefix` 中的真实 OpenShell CLI 参数；桌面主机检查已落地（`openshell_version` + `docker_host_networking` 命令，Settings ▸ Security 卡片）。前端：`sessionStore`（会话列表）与 `activeSessionStore`（活动会话）两个切片已落地，`runStore` 与 UI 偏好切片仍列入 `gui-state-zustand.md` 计划。

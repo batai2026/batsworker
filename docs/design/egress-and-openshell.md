@@ -56,6 +56,30 @@ OpenShell CLI is site-deployed and varies.
 - `GET /v1/settings/openshell/status` reports `available` / `prefix` / `backend`
   for the settings UI.
 
+## Desktop host checks (Tauri)
+
+The browser build can only see the sidecar's status, so the desktop shell exposes two
+read-only probes that Settings ▸ Security renders in a desktop-only card:
+
+- `openshell_version` (`src-tauri/src/lib.rs`) — runs `openshell --version` with the
+  user's real PATH (`sidecar_env()`, so a Finder-launched app still finds Homebrew
+  installs) and returns the first non-empty line, or `null`.
+- `docker_host_networking` — reads Docker Desktop's settings store
+  (`settings-store.json`, falling back to `settings.json`; macOS
+  `~/Library/Group Containers/group.com.docker/`, Windows `%APPDATA%\Docker\`,
+  Linux `~/.docker/desktop/`) and reports:
+
+  | Field | Meaning |
+  |---|---|
+  | `docker_cli` | `docker --version` succeeds |
+  | `host_networking` | `hostNetworkingEnabled` (also tolerates `EnableHostNetworking` / `enableHostNetworking`); `null` = unknown, never assumed off |
+  | `settings_path` | which file was read (`null` when absent) |
+
+Both run in `spawn_blocking` and degrade to `null`/`false` on any failure. The card
+(`desktop-checks-card` in `SecuritySection.tsx`) is hidden when `isTauri()` is false, so
+the browser GUI is unchanged; host networking is only needed when the sandbox runs with
+`sandbox_network = "host"`.
+
 ## Container image
 
 - `Dockerfile` (multi-stage: installs the package + `aisuite` in `python:3.12-slim`,
@@ -77,6 +101,6 @@ OpenShell CLI is site-deployed and varies.
 
 - Fill `sandbox_openshell_prefix` with the site's real CLI flags (the adapter
   already expands `{workspace}` / `{image}` / `{network}`).
-- Desktop Tauri settings item: OpenShell version + Docker Desktop host-networking
-  check (Rust commands + GUI card).
 - Verify `ghcr.io` push on a real tag release.
+- Desktop host checks landed (`openshell_version` + `docker_host_networking`, GUI card);
+  still to verify on a machine with Docker Desktop and OpenShell installed.

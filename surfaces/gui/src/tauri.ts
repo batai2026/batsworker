@@ -77,6 +77,21 @@ export const setKeepAwake = (enabled: boolean) => invoke<boolean>("set_keep_awak
 /** Begin native window dragging from a custom title/header region. */
 export const startWindowDrag = () => invoke<boolean>("start_window_drag");
 
+// Sandbox capability checks (Settings ▸ Security). Desktop-only read-only probes:
+// OpenShell's CLI version and Docker Desktop's host-networking preference.
+export type DockerHostNetworkingStatus = {
+  docker_cli: boolean;
+  host_networking: boolean | null;
+  settings_path: string | null;
+};
+
+/** `openshell --version` first line, or null when the CLI is absent. */
+export const getOpenShellVersion = () => invoke<string | null>("openshell_version");
+
+/** Whether Docker Desktop's "Enable host networking" toggle is on (null = unknown). */
+export const getDockerHostNetworking = () =>
+  invoke<DockerHostNetworkingStatus>("docker_host_networking");
+
 // Local dictation is native-only. The browser build deliberately keeps this unavailable rather
 // than silently sending microphone audio to a server.
 export const getDictationStatus = () => invoke<DictationStatus>("get_dictation_status");
