@@ -37,8 +37,6 @@ jobs:
   gate-stub:
     if: github.event_name != 'workflow_dispatch'
     runs-on: ubuntu-latest
-    env:
-      COWORKER_STATE_DIR: ${{ runner.temp }}/eval-state
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -49,6 +47,8 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e .
       - name: Golden-case gate (stub, no network)
+        env:
+          COWORKER_STATE_DIR: ${{ runner.temp }}/eval-state
         run: |
           mkdir -p "${{ runner.temp }}/eval-ws" "$COWORKER_STATE_DIR"
           python -m coworker.eval.matrix \
@@ -68,7 +68,6 @@ jobs:
     if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     env:
-      COWORKER_STATE_DIR: ${{ runner.temp }}/eval-state
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
       ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
     steps:
@@ -81,6 +80,8 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e .
       - name: Prepare case and workspace
+        env:
+          COWORKER_STATE_DIR: ${{ runner.temp }}/eval-state
         run: |
           test -f "${{ inputs.case }}/messages.jsonl" || {
             echo "missing ${{ inputs.case }}/messages.jsonl — export it with coworker.eval.capture first"
@@ -89,6 +90,7 @@ jobs:
           mkdir -p "${{ runner.temp }}/eval-ws" "$COWORKER_STATE_DIR"
       - name: Real-model matrix
         env:
+          COWORKER_STATE_DIR: ${{ runner.temp }}/eval-state
           CASE: ${{ inputs.case }}
           MODELS: ${{ inputs.models }}
           HARNESSES: ${{ inputs.harnesses }}

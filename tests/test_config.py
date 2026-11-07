@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sys
 
 import pytest
 
@@ -81,7 +82,10 @@ def test_workspace_trust_is_canonical_and_user_owned(tmp_path):
     assert canonical == str(real.resolve())
     assert store.is_trusted(real)
     assert store.list() == [str(real.resolve())]
-    assert (store.path.stat().st_mode & 0o777) == 0o600
+    if sys.platform != "win32":
+        # Windows has no POSIX file modes: os.stat reports 0o666 regardless of
+        # what chmod asked for, so the permission half of this test is POSIX-only.
+        assert (store.path.stat().st_mode & 0o777) == 0o600
 
     store.set_trusted(real, False)
     assert not store.is_trusted(alias)

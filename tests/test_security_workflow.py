@@ -9,6 +9,8 @@ Covers:
 
 from __future__ import annotations
 
+import sys
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -234,8 +236,10 @@ def test_docker_executor_background_tasks(tmp_path, monkeypatch):
 
 
 @pytest.mark.skipif(
-    not __import__("coworker.tools.sandbox", fromlist=["docker_available"]).docker_available(),
-    reason="Docker is not available on this runner",
+    sys.platform == "win32"
+    or not __import__("coworker.tools.sandbox", fromlist=["docker_available"]).docker_available(),
+    reason="requires Docker with Linux containers "
+    "(Windows runners only offer Windows containers, which reject --read-only)",
 )
 def test_docker_executor_real_sandbox_run(tmp_path):
     """Windows/Docker CI validation: with Docker present, a real command runs sandboxed
