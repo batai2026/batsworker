@@ -54,10 +54,10 @@ returning `sandboxed: false` plus a `fallback_reason` the UI can surface.
 
 ## Boundaries
 
-- **File tools (v2 core)**: with the sandbox enabled, `files`/`code_files`
-  capabilities swap to container-backed read/write/list (`sandbox_files.py`).
-  `apply_patch`/`replace_in_file` and multi-root mounts are deferred
-  (see [file-sandbox.md](file-sandbox.md)).
+- **File tools (v2)**: with the sandbox enabled, `files`/`code_files`
+  capabilities swap to container-backed read/write/list/patch/delete
+  (`sandbox_files.py`), including `apply_patch`/`replace_in_file` and multi-root
+  mounts (see [file-sandbox.md](file-sandbox.md)).
 - **Background tasks (v2)**: supported via a long-lived container + `docker exec`;
   output captured to a workspace file.
 - No persistent container for foreground commands (each gets a clean environment).

@@ -1,7 +1,8 @@
 # Design: sandboxed file tools (sandbox v2, last item)
 
-> Status: **core implemented** (`read_file` / `write_file` / `list_files`);
-> `apply_patch` / `replace_in_file` and multi-root mounts are deferred.
+> Status: **implemented** (`read_file` / `write_file` / `list_files` /
+> `replace_in_file` / `apply_patch` / `delete_file`, including host fallback and
+> multi-root mounts).
 >
 > Source: `coworker/tools/sandbox.py` (`DockerExecutor` file channel),
 > `coworker/tools/sandbox_files.py` (`sandboxed_file_tools`),
@@ -10,7 +11,7 @@
 
 ## Why
 
-The sandbox currently covers **shell commands only**. File tools
+Initially, the sandbox covered **shell commands only**. File tools
 (`read_file`, `write_file`, `apply_patch`, `replace_in_file`, `list_files`, …)
 operate directly on the host filesystem, scoped only by the permission engine's
 path/root checks. That is a *soft* layer: a compromised model could read or
@@ -41,10 +42,10 @@ Two layers need changing:
      is refused (`path escapes the sandbox`).
 
 2. **Tool factory swap** — `catalog.py`'s `_files` / `_code_files` builders
-   currently return host-side tools. Introduce a `SandboxedFiles` variant that
+   previously returned host-side tools. Introduce a `SandboxedFiles` variant that
    produces the same tool names/schemas but executes via the `DockerExecutor`
    file channel. Selection rule: if `sandbox_enabled && docker_available` →
-   sandboxed files; else → current host tools. This mirrors how
+   sandboxed files; else → host tools. This mirrors how
    `build_engine` already selects `DockerExecutor` vs `LocalExecutor`.
 
 ## Key decisions / tradeoffs
@@ -63,12 +64,8 @@ Two layers need changing:
   (like the shell fallback) or fall back to host tools with `sandboxed: false` —
   the latter reuses the per-command probe pattern from `DockerExecutor.run`.
 
-## What stays out of scope / deferred
+## What stays out of scope
 
-- `apply_patch` / `replace_in_file` still run host-side (deferred; they need a
-  `patch`/`python` runner inside the container).
-- Multi-root sessions: only the mounted workspace is addressable; scratch/granted
-  roots outside the workspace need extra `-v` mounts (deferred).
 - Network egress of `web_fetch`/connectors is governed by the permission system,
   not the sandbox.
 - The sandbox does not replace the permission engine — it hardens the boundary

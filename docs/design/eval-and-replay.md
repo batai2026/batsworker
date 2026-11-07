@@ -3,7 +3,8 @@
 > Source: `coworker/trajectory.py` (ledger), `coworker/server/manager_sessions.py`
 > (fork / replay / trajectory diff), `coworker/personas/harness.py` (harness
 > registry), `coworker/eval/matrix.py` (model × harness matrix),
-> `coworker/eval/capture.py` (record → case export).
+> `coworker/eval/capture.py` (record → case export), `evals/ci-case/` (golden
+> case), `.github/workflows/eval.yml` (CI gate).
 
 The observability stack answers "how long did each step take" (spans). This
 document covers the other half: **what exactly was sent to the model, what the
@@ -236,6 +237,41 @@ assertion, judging each turn against four failure kinds — `cell_error`
 `report["baseline_check"]` and the CLI exits **3** on drift (distinct from
 **1** for a failed cell), so CI can gate on it without losing the run-failure
 signal.
+
+### CI wiring (`.github/workflows/eval.yml`)
+
+The gate now runs in CI in two lanes:
+
+- **`gate-stub`** (push / PR): runs the committed golden case
+  `evals/ci-case/` with `--stub --check-baseline` and uploads the report as an
+  artifact. Drift (exit 3) fails the job; no keys, no network, no cost.
+- **`matrix-real`** (`workflow_dispatch` only): parameterized case dir, models,
+  harnesses, byte ratio and gate on/off; reads `OPENAI_API_KEY` /
+  `ANTHROPIC_API_KEY` from repo secrets and uploads its report. Manual because
+  it spends money and needs keys; it never blocks a PR.
+
+**Deterministic golden case.** The outbound payload embeds the absolute
+workspace path, git branch/status/recent commits, the per-turn `Now:` clock, and
+user-level skills/memories — so the workflow (and any regeneration run) pins an
+**empty, non-git workspace plus an empty `COWORKER_STATE_DIR`**. Under that pin
+the only cross-machine variance is path length and the timezone name (well under
+the 10% ratio), and a stub cell never issues `tool_call`s, so `tool_drift` is
+trivially satisfied there; the real-model lane is where tool-sequence checks
+bite.
+
+**Refreshing the baseline.** After an intentional change to prompts, harness
+specs or the tool catalog, rewrite the golden baseline with
+`matrix --write-baseline` (requires `--case` + `--stub`, exactly one
+cell, and is mutually exclusive with `--check-baseline`):
+
+```bash
+COWORKER_STATE_DIR=/tmp/eval-ci-state \
+  python -m coworker.eval.matrix --case evals/ci-case --stub \
+  --workspace /tmp/eval-ci-ws --write-baseline
+```
+
+Commit the regenerated `baseline.json` together with the change that caused the
+drift, so the diff shows both sides of the intent.
 
 ## Non-goals & follow-ups
 
