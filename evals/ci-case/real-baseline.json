@@ -1,0 +1,132 @@
+{
+  "generated_at": "2026-11-07T22:09:17",
+  "workspace": "/home/runner/work/_temp/eval-ws",
+  "turns": [
+    1,
+    2
+  ],
+  "models": [
+    "deepseek:deepseek-v4.1"
+  ],
+  "harnesses": [
+    "minimal"
+  ],
+  "harness_sources": {
+    "minimal": "manifest"
+  },
+  "cells": [
+    {
+      "harness": "minimal",
+      "model": "deepseek:deepseek-v4.1",
+      "session_id": "eval-minimal-deepseek-deepseek-v4-1-d43daa",
+      "status": "ok",
+      "error": null,
+      "turns": [
+        {
+          "turn": 1,
+          "status": "ok",
+          "duration_s": 2.238,
+          "digest": "9107eede32a09f4c0eaaa883ded25487cf9e62be8dd7dd004f699aa78a0fedd2",
+          "bytes": 2693,
+          "model": "deepseek:deepseek-v4.1",
+          "tools": [
+            "list_files",
+            "write_file",
+            "apply_unified_diff",
+            "apply_patch",
+            "replace_in_file",
+            "read_file",
+            "run_shell",
+            "shell_task_output",
+            "shell_task_kill",
+            "request_directory",
+            "request_tool",
+            "web_search",
+            "web_fetch",
+            "load_skill",
+            "save_skill",
+            "propose_plan"
+          ],
+          "requests": 1,
+          "tool_calls": 0,
+          "tool_names": []
+        },
+        {
+          "turn": 2,
+          "status": "ok",
+          "duration_s": 0.306,
+          "digest": "695c635b53a81db15183f8b3c0c748d3b776e7e47160fc004757ac3cb0801570",
+          "bytes": 2746,
+          "model": "deepseek:deepseek-v4.1",
+          "tools": [
+            "list_files",
+            "write_file",
+            "apply_unified_diff",
+            "apply_patch",
+            "replace_in_file",
+            "read_file",
+            "run_shell",
+            "shell_task_output",
+            "shell_task_kill",
+            "request_directory",
+            "request_tool",
+            "web_search",
+            "web_fetch",
+            "load_skill",
+            "save_skill",
+            "propose_plan"
+          ],
+          "requests": 1,
+          "tool_calls": 0,
+          "tool_names": []
+        }
+      ],
+      "vs_baseline": [
+        {
+          "turn": 1,
+          "bytes": 2693,
+          "base_bytes": 2734,
+          "bytes_delta": -41,
+          "tool_calls": 0,
+          "base_tool_calls": 0,
+          "tools": [],
+          "base_tools": [],
+          "tools_match": true
+        },
+        {
+          "turn": 2,
+          "bytes": 2746,
+          "base_bytes": 2823,
+          "bytes_delta": -77,
+          "tool_calls": 0,
+          "base_tool_calls": 0,
+          "tools": [],
+          "base_tools": [],
+          "tools_match": true
+        }
+      ]
+    }
+  ],
+  "baseline": {
+    "session_id": "ci-case",
+    "captured_at": "2026-11-07T10:15:07",
+    "turns": [
+      {
+        "turn": 1,
+        "model": "stub:model",
+        "bytes": 2734,
+        "requests": 1,
+        "tool_calls": 0,
+        "tools": []
+      },
+      {
+        "turn": 2,
+        "model": "stub:model",
+        "bytes": 2823,
+        "requests": 1,
+        "tool_calls": 0,
+        "tools": []
+      }
+    ]
+  }
+}
