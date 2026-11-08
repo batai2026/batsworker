@@ -5,6 +5,12 @@ name: CI
 
 on: [push, pull_request]
 
+# Read-only token: CI runs third-party install code (`pip install -e .[dev]`,
+# `npm ci` postinstall scripts), none of which should be able to write to the
+# repository. An unset block inherits the repository default instead.
+permissions:
+  contents: read
+
 jobs:
   lint:
     runs-on: ubuntu-latest

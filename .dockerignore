@@ -14,3 +14,15 @@ __pycache__
 .pytest_cache
 .ruff_cache
 .mypy_cache
+# Build outputs and local artifacts: never part of the image, and they bloat the
+# build context sent to the daemon.
+build
+dist
+dists
+*.egg-info
+# Agent/editor local state — may carry machine-local config we do not want to ship.
+.claude
+.trae
+# Defensive: no env files should ever enter the build context.
+.env
+.env.*

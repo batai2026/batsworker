@@ -25,6 +25,17 @@ RUN pip install --no-cache-dir .
 
 FROM python:3.12-slim AS runtime
 
+# This image is published to GHCR and runs agent-driven shell commands, so it must
+# not run as root: uid 0 with the default capability set turns any tool-execution
+# escape into host-level privilege, and files written into a bind-mounted workspace
+# land on the host owned by root.
+#
+# Bind mount a workspace on Linux with a UID that already owns it:
+#   docker build --build-arg OPENWORKER_UID=$(id -u) \
+#                --build-arg OPENWORKER_GID=$(id -g) -t openworker:local .
+ARG OPENWORKER_UID=1000
+ARG OPENWORKER_GID=1000
+
 WORKDIR /workspace
 # Copy the installed package + console script from the build stage.
 COPY --from=build /usr/local/lib/python3.12/site-packages /usr/local/lib/python3.12/site-packages
@@ -32,6 +43,16 @@ COPY --from=build /usr/local/bin/openworker-server /usr/local/bin/openworker-ser
 
 ENV PYTHONUNBUFFERED=1 \
     COWORKER_STATE_DIR=/workspace/.coworker-state
+
+# Create the unprivileged user and give it the two paths the server writes to
+# (the state dir holds the generated sidecar token, written mode 0600).
+RUN groupadd --gid "${OPENWORKER_GID}" openworker \
+    && useradd --uid "${OPENWORKER_UID}" --gid "${OPENWORKER_GID}" --create-home \
+        --home-dir /home/openworker --shell /usr/sbin/nologin openworker \
+    && mkdir -p /workspace/.coworker-state \
+    && chown -R openworker:openworker /workspace
+
+USER openworker
 
 ENTRYPOINT ["openworker-server"]
 CMD ["--cwd", "/workspace"]
