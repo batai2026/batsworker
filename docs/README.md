@@ -58,13 +58,14 @@ New to the codebase? Read in roughly this order:
 | [decisions.md](design/decisions.md) | Curated decision log harvested from in-code `OPE-###` / spec-reference comments |
 | [openworker-design-zh.md](design/openworker-design-zh.md) | 整合版中文设计文档（上述全部内容的单文件中文版） |
 | [user-manual-zh.md](user-manual-zh.md) | 用户手册（中文）：从快速上手到全部功能的操作指南 |
-| [worklog-2026-10-01.md](worklog-2026-10-01.md) | 工作总结：项目分析 · 设计文档 · GUI 中文化 · 质量护栏 · 本地编译（2026-09-27 → 10-01） |
-| [worklog-2026-10-25.md](worklog-2026-10-25.md) | 工作总结：登录差异 · 演示生成技能 · 浏览器面板 · 模板/插件市场 · 明文记忆 · PWA · 并行子代理 · 威胁模型闭环 · 雇佣落地页 |
+| [worklog-2026-10-01.md](archive/worklog-2026-10-01.md) | 工作总结：项目分析 · 设计文档 · GUI 中文化 · 质量护栏 · 本地编译（2026-09-27 → 10-01） |
+| [worklog-2026-10-25.md](archive/worklog-2026-10-25.md) | 工作总结：登录差异 · 演示生成技能 · 浏览器面板 · 模板/插件市场 · 明文记忆 · PWA · 并行子代理 · 威胁模型闭环 · 雇佣落地页 |
 | [extensions-and-marketplace.md](design/extensions-and-marketplace.md) | Extensions & marketplaces: demo→skill, browser panel, template/plugin marketplaces, plain-text memory, PWA, parallel subagents, threat model + finding closure, hire landing pages |
 | [maturity-roadmap.md](design/maturity-roadmap.md) | Maturity roadmap: sandbox GUI, App.tsx split, Windows CI/test fixes, new-feature e2e, P2 follow-ups |
 | [file-sandbox.md](design/file-sandbox.md) | Design proposal: routing file tools through the Docker sandbox (workspace-only, read-only root, no network) |
 | [app-tsx-refactor.md](design/app-tsx-refactor.md) | App.tsx refactor: 16 extracted hooks, patterns, verification, remaining clusters |
 | [egress-and-openshell.md](design/egress-and-openshell.md) | Egress policy server + OpenShell sandbox executor + container image (v0.3.1 alignment) |
+| [maturity-assessment-2026-11-08.md](maturity-assessment-2026-11-08.md) | 项目成熟度评估报告（2026-11-08）：0.93/1.0，已完成项清单 + 剩余缺口 + 归档记录 |
 
 ## Related material elsewhere in the repo
 
