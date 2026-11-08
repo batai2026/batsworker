@@ -21,13 +21,18 @@ def _git(workspace: Path, *args: str) -> Optional[str]:
             ["git", "-C", str(workspace), *args],
             capture_output=True,
             text=True,
+            # Windows locales default to the ANSI code page (GBK on zh-CN), so git
+            # output containing UTF-8 (non-ASCII commit subjects, paths) crashes the
+            # reader thread and leaves stdout as None. Pin UTF-8 and degrade instead.
+            encoding="utf-8",
+            errors="replace",
             timeout=5,
         )
     except (OSError, subprocess.SubprocessError):
         return None
     if out.returncode != 0:
         return None
-    return out.stdout.strip()
+    return (out.stdout or "").strip()
 
 
 def _git_snapshot(workspace: Path) -> list[str]:

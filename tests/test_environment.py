@@ -53,6 +53,36 @@ def test_context_shows_dirty_status(tmp_path):
     assert "f.txt" in block and "new.txt" in block
 
 
+def test_context_survives_non_ascii_git_output(tmp_path):
+    """Windows ANSI code pages (GBK) cannot decode UTF-8 git output — the subprocess
+    reader thread dies and stdout comes back None. A repo with a Chinese commit
+    subject must still produce a snapshot instead of killing the WebSocket."""
+    ws = _git_repo(tmp_path)
+    (ws / "中文.txt").write_text("1", encoding="utf-8")
+    subprocess.run(["git", "-C", str(ws), "add", "-A"], capture_output=True, check=True)
+    subprocess.run(
+        ["git", "-C", str(ws), "commit", "-qm", "中文提交：文档归档"],
+        capture_output=True,
+        check=True,
+    )
+    block = environment_context(ws)
+    assert "Git branch: main" in block
+    assert "Recent commits:" in block
+
+
+def test_git_helper_tolerates_missing_stdout(tmp_path, monkeypatch):
+    """Defensive guard: a dead reader thread yields stdout=None, not an exception."""
+
+    class _R:
+        returncode = 0
+        stdout = None
+
+    monkeypatch.setattr(subprocess, "run", lambda *a, **k: _R())
+    from coworker.environment import _git
+
+    assert _git(tmp_path, "status") == ""
+
+
 class _Stub:
     def complete(self, **kwargs):  # pragma: no cover
         raise NotImplementedError

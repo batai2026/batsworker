@@ -59,13 +59,15 @@ def _git_remotes(cwd: Path) -> tuple[tuple[str, str], ...]:
             cwd=str(cwd),
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=5,
             check=False,
         )
     except (OSError, subprocess.SubprocessError):
         return ()
     seen: dict[str, str] = {}
-    for line in proc.stdout.splitlines():
+    for line in (proc.stdout or "").splitlines():
         parts = line.split()
         if len(parts) >= 2:
             seen.setdefault(parts[0], parts[1])

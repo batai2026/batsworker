@@ -58,13 +58,18 @@ def git_tools(workspace: str) -> list:
         if path:
             cmd += ["--", path]
         try:
-            out = subprocess.run(cmd, capture_output=True, text=True, timeout=15)
+            # UTF-8 explicitly: Windows ANSI code pages (GBK) cannot decode non-ASCII
+            # commit subjects and would leave stdout as None.
+            out = subprocess.run(
+                cmd, capture_output=True, text=True,
+                encoding="utf-8", errors="replace", timeout=15,
+            )
         except Exception as exc:
             return {"error": f"git log failed: {exc}"}
         if out.returncode != 0:
             return {"error": (out.stderr or "git log failed").strip()[:300]}
         commits = []
-        for line in out.stdout.splitlines():
+        for line in (out.stdout or "").splitlines():
             parts = line.split(_SEP)
             if len(parts) == 4:
                 commits.append(

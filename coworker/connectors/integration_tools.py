@@ -456,15 +456,16 @@ def _run_git(
 
     try:
         proc = subprocess.run(
-            ["git", *args], cwd=cwd, capture_output=True, text=True, timeout=timeout
+            ["git", *args], cwd=cwd, capture_output=True, text=True,
+            encoding="utf-8", errors="replace", timeout=timeout,
         )
     except FileNotFoundError:
         return "", "git is not installed"
     except subprocess.TimeoutExpired:
         return "", "git timed out"
     if proc.returncode != 0:
-        return "", (proc.stderr or proc.stdout).strip()[-500:]
-    return proc.stdout.strip(), ""
+        return "", (proc.stderr or proc.stdout or "").strip()[-500:]
+    return (proc.stdout or "").strip(), ""
 
 
 def _github_git_base() -> str:

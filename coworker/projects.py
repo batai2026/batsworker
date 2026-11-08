@@ -23,13 +23,14 @@ def _git_common_dir(workspace: Path) -> Optional[Path]:
     try:
         out = subprocess.run(
             ["git", "-C", str(workspace), "rev-parse", "--git-common-dir"],
-            capture_output=True, text=True, timeout=5,
+            capture_output=True, text=True,
+            encoding="utf-8", errors="replace", timeout=5,
         )
     except (OSError, subprocess.TimeoutExpired):
         return None
     if out.returncode != 0:
         return None
-    raw = out.stdout.strip()
+    raw = (out.stdout or "").strip()
     if not raw:
         return None
     p = Path(raw)
