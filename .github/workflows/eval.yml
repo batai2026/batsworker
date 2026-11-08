@@ -33,6 +33,11 @@ on:
         required: false
         default: "1"
 
+# Read-only token: the matrix job holds provider API keys and neither job needs to
+# write to the repository.
+permissions:
+  contents: read
+
 jobs:
   gate-stub:
     if: github.event_name != 'workflow_dispatch'
@@ -83,9 +88,13 @@ jobs:
       - name: Prepare case and workspace
         env:
           COWORKER_STATE_DIR: ${{ runner.temp }}/eval-state
+          # Passed through the environment, never spliced into the shell: an
+          # `${{ inputs.* }}` substitution is caller-controlled text in a `run:` block,
+          # which is command injection in a job that holds provider API keys.
+          CASE: ${{ inputs.case }}
         run: |
-          test -f "${{ inputs.case }}/messages.jsonl" || {
-            echo "missing ${{ inputs.case }}/messages.jsonl — export it with coworker.eval.capture first"
+          test -f "$CASE/messages.jsonl" || {
+            echo "missing $CASE/messages.jsonl — export it with coworker.eval.capture first"
             exit 1
           }
           mkdir -p "${{ runner.temp }}/eval-ws" "$COWORKER_STATE_DIR"
