@@ -1,6 +1,6 @@
 # OpenWorker 用户使用手册
 
-适用版本：**1.0.1 及以上**（1.0.0 在 Windows 中文系统存在「提问无响应」缺陷，见第 7 节）
+适用版本：**1.0.2 及以上**（1.0.0 在 Windows 中文系统存在「提问无响应」缺陷，见第 7 节）
 
 ---
 
@@ -173,7 +173,7 @@ Docker 镜像用户：`docker pull ghcr.io/batai2026/batsworker:latest`
 1. 查看后端日志：
    `%APPDATA%\coworker\logs\openworker-server.log`
 2. 确认后端在跑（任务管理器中有 `openworker-server`），或访问 `http://127.0.0.1:54581/v1/health` 应返回 `{"status":"ok"}`
-3. 日志若有 `UnicodeDecodeError: 'gbk' codec` 与 `AttributeError: 'NoneType' object has no attribute 'strip'`，说明是 **1.0.0 的已知缺陷**（Windows 中文系统解码 UTF-8 的 git 输出失败），升级到 **1.0.1+** 即可修复。
+3. 日志若有 `UnicodeDecodeError: 'gbk' codec` 与 `AttributeError: 'NoneType' object has no attribute 'strip'`，说明是 **1.0.0 的已知缺陷**（Windows 中文系统解码 UTF-8 的 git 输出失败），升级到 **1.0.2+** 即可修复。
 
 ### 模型调用失败
 

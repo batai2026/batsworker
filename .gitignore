@@ -15,3 +15,7 @@ dist/
 # Local secrets (live-smoke BYO keys) — never committed
 .env
 .claude/settings.local.json
+
+# Local installer cache
+dists/
+
