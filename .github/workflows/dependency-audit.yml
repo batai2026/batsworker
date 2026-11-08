@@ -1,0 +1,56 @@
+# Dependency audit — advisory tracking for the four dependency sources.
+#
+# Why a separate workflow: the audit that produced osv-scanner.toml (2026-11-08)
+# found 94 advisories, of which only a handful are worth acting on. The point of
+# this job is to keep that from being re-discovered by hand every quarter, and to
+# stop NEW vulnerable dependencies from landing without anyone noticing.
+#
+# Two modes, deliberately different:
+#   * pull_request — compares against the base branch and fails ONLY on
+#     vulnerabilities the PR adds. Existing accepted debt never blocks an
+#     unrelated change, so this check can be made blocking immediately.
+#   * schedule/push — full backlog scan, reported to the Security tab. It stays
+#     non-blocking (fail-on-vuln: false) until the npm tooling PR and the Rust
+#     patch PR land; flip that to true once the backlog is cleared.
+#
+# Coverage note: the scan covers surfaces/gui/package-lock.json,
+# stt/Cargo.lock and surfaces/gui/src-tauri/Cargo.lock. Python has no lockfile
+# in this repo — pyproject.toml carries version floors, so CI resolves whatever
+# is latest on each run; the equivalent control there is the floor itself
+# (e.g. pypdf>=6.21.4), enforced at review time.
+
+name: Dependency audit
+
+on:
+  pull_request:
+    branches: [main, master]
+  schedule:
+    - cron: "0 3 * * 1"   # Mondays 03:00 UTC
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+  security-events: write   # upload SARIF to the Security > Code scanning tab
+
+jobs:
+  new-vulnerabilities:
+    if: github.event_name == 'pull_request'
+    uses: "google/osv-scanner-action/.github/workflows/osv-scanner-reusable-pr.yml@v2.7.0"
+    with:
+      # --config is explicit because osv-scanner.toml does not propagate into
+      # subdirectories, and every lockfile here lives below the repo root.
+      scan-args: |-
+        --config=osv-scanner.toml
+        --recursive
+        ./
+
+  full-backlog:
+    if: github.event_name != 'pull_request'
+    uses: "google/osv-scanner-action/.github/workflows/osv-scanner-reusable.yml@v2.7.0"
+    with:
+      scan-args: |-
+        --config=osv-scanner.toml
+        --recursive
+        ./
+      fail-on-vuln: false
