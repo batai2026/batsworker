@@ -32,7 +32,14 @@ dependencies = [
     # PDF attachments for models without native PDF support (pdf_support.py):
     # pypdf = pure-python text extraction; pypdfium2 = page rasterization (BSD pdfium,
     # ships its own libpdfium — NOT PyMuPDF, whose AGPL license can't ride in the DMG).
-    "pypdf>=5",
+    # Floor raised for the malformed-PDF DoS cluster (infinite loops / quadratic
+    # memory in xref, page-tree and filter parsing). Attachment bytes are
+    # attacker-controlled: POST /v1/attachments/inspect-pdf feeds a client data_url
+    # straight into PdfReader, and engine.py extracts text from chat attachments for
+    # models without native PDF support. 6.21.4 closes every advisory in that
+    # cluster; <7 keeps us on the line the suite is verified against instead of
+    # taking an untested major.
+    "pypdf>=6.21.4,<7",
     "pypdfium2>=4",
     # IANA tz database for zoneinfo. Windows ships no system tz db, so without this every
     # named schedule timezone (UTC, Asia/Kolkata, …) silently falls back to local time.
