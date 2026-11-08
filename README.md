@@ -8,7 +8,7 @@
 
 It runs on your machine and doesn't lock you into any model: bring your own API key for OpenAI, Anthropic, Google, or an open-weight provider, or run fully local with Ollama. Your data leaves your machine only through the model and integrations *you* choose.
 
-> **Naming** — three names, one project: the repository is `batai2026/batsworker`, the product is **OpenWorker**, and the Python distribution is published as `cowworker` (`0.2.1b`). Repo name, product name, and package name differ on purpose: `batsworker` is the hosting location, `OpenWorker` is the brand, and `cowworker` is the install name (`pip install coworker`).
+> **Naming** — three names, one project: the repository is `batai2026/batsworker`, the product is **OpenWorker**, and the Python distribution is published as `coworker` (`1.0.0`). Repo name, product name, and package name differ on purpose: `batsworker` is the hosting location, `OpenWorker` is the brand, and `cowworker` is the install name (`pip install coworker`).
 
 ## Provenance
 
