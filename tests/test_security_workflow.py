@@ -106,6 +106,23 @@ def test_finding_validation_and_unknown(tmp_path):
 # -- tools + catalog capability ---------------------------------------------------
 
 
+def test_security_capability_expands_without_import_error():
+    """Regression: Security-persona sessions were silently dead.
+
+    ``coworker/catalog.py::_security`` used ``from ..security import ...``,
+    which climbs above the top-level package and raises::
+
+        ImportError: attempted relative import beyond top-level package
+
+    while the WS handler built the engine — the message landed on screen but
+    the agent never ran, and no error surfaced in the UI.
+    """
+    from coworker.catalog import _security
+
+    names = {t.__name__ for t in _security(None)}
+    assert {"threat_model_read", "security_finding_log"} <= names
+
+
 def test_security_tools_operate_on_store(tmp_path):
     store = SecurityStore(tmp_path / "security")
     tools = {t.__name__: t for t in security_tools(store)}

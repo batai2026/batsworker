@@ -147,7 +147,10 @@ def _todo(context: AgentContext) -> list:
 
 def _security(context: AgentContext) -> list:
     """Security workflow: editable threat model + finding tracking loop."""
-    from ..security import SecurityStore
+    # Same package level as this module — ``..`` would climb above ``coworker``
+    # and raise "attempted relative import beyond top-level package" at engine
+    # build time, leaving every Security-persona session silently unanswered.
+    from .security import SecurityStore
 
     return security_tools(SecurityStore())
 
