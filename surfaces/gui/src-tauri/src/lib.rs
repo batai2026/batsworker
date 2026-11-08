@@ -762,8 +762,12 @@ fn show_main(app: &tauri::AppHandle) {
 // The GUI drives updates through these commands (same invoke bridge as everything
 // else — no global plugin JS): check, background pre-download, install. Update
 // artifacts are minisign-verified against the pubkey in tauri.conf.json before
-// anything is installed; the manifest lives at the endpoints configured there
-// (download.openworker.com → GitHub Releases).
+// anything is installed; the manifest lives at the single endpoint configured there
+// (this repo's own `releases/latest/download/latest.json`).
+//
+// Do not add another org's release feed here. The pubkey, not the endpoint, decides
+// who can install code: any key pinned in the config signs installable updates for
+// every client that ships it, and already-installed clients cannot be revoked.
 
 #[derive(serde::Serialize)]
 struct UpdateInfo {
