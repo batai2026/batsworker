@@ -1,6 +1,6 @@
 # Build & publish the OpenWorker container image (v0.3.1 gap closure).
 # On every tag (vX.Y.Z), builds and pushes:
-#   ghcr.io/andrewyng/openworker:<tag>   ghcr.io/andrewyng/openworker:latest
+#   ghcr.io/<owner>/<repo>:<tag>   ghcr.io/<owner>/<repo>:latest
 name: docker
 
 on:
@@ -34,5 +34,5 @@ jobs:
           context: .
           push: true
           tags: |
-            ghcr.io/andrewyng/openworker:${{ github.ref_name }}
-            ghcr.io/andrewyng/openworker:latest
+            ghcr.io/${{ github.repository }}:${{ github.ref_name }}
+            ghcr.io/${{ github.repository }}:latest
