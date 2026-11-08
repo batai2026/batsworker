@@ -48,7 +48,7 @@
       "endpoints": [
         "https://github.com/batai2026/batsworker/releases/latest/download/latest.json"
       ],
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDVCNzEzRjY5OTkzNUNBNjkKUldScHlqV1phVDl4VzBvTnFLLytzaDkzNVd3WWNuUm8yNE95WTBFNnBtcGF1RENxeTRuNVhQeloK",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDc3NUIyRjk1MDI1Q0YwOTkKUldTWjhGd0NsUzliZDV6bTVBa0NsWm9jVjRpUmt0WUlwZ1JydHZla0lqd0x5OWZPT0xWdjh6OWkK",
       "windows": {
         "installMode": "passive"
       }
