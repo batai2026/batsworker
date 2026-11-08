@@ -20,6 +20,12 @@
   The result is UNSIGNED — first launch shows a SmartScreen warning ("More info" -> "Run anyway").
   Authenticode signing is a later step.
 
+  AUTO-UPDATE ARTIFACTS (the .sig the updater verifies) need TAURI_SIGNING_PRIVATE_KEY and
+  TAURI_SIGNING_PRIVATE_KEY_PASSWORD: exported by the caller/CI, or listed in `.ocw-updater.env`
+  one directory ABOVE the repo (same convention as `.ocw-notary.env`, never committed). The key
+  entry may be the key material itself or a path to the key file. No key -> installers without
+  .sig, i.e. NOT releasable.
+
   Experimental (use-at-your-own-risk) connectors are EXCLUDED from this build by default —
   the spec strips coworker.connectors.experimental. Self-builders can opt in with:
     $env:COWORKER_EXPERIMENTAL = "1"; .\build_windows.ps1
@@ -83,9 +89,63 @@ Write-Host "    -> $Dst"
 
 Write-Host "==> [3/3] tauri build (--bundles $Bundles)" -ForegroundColor Cyan
 # Auto-update artifacts (NSIS setup .exe + minisign .sig): produced only when the updater
-# signing key env is present (CI secret TAURI_SIGNING_PRIVATE_KEY). Keyless builds skip
-# the overlay so dev builds keep working; keyless RELEASES strand installs without
-# auto-update.
+# signing key is present -- exported by CI (secret TAURI_SIGNING_PRIVATE_KEY) or by the
+# caller, else read from `.ocw-updater.env` one directory ABOVE the repo (same convention
+# as `.ocw-notary.env`: shared by every clone/worktree, never committed). Keyless builds
+# skip the overlay so dev builds keep working; keyless RELEASES strand installs without
+# auto-update, hence the loud warning rather than silence.
+function Read-DotEnv([string]$Path) {
+    # Minimal `.env` reader -- NOT a general parser. Handles `export` prefixes, `#` comments,
+    # 'single'/"double" quotes, and a double-quoted value spanning lines (a minisign key is
+    # two lines, so TAURI_SIGNING_PRIVATE_KEY="untrusted comment: ...
+    # RW..." has to survive). Values may also be a bare path to the key file.
+    $lines = ((Get-Content -LiteralPath $Path -Raw) -replace "`r`n", "`n").Split("`n")
+    $out = @{}
+    $open = $null; $buf = $null
+    foreach ($line in $lines) {
+        if ($null -ne $open) {
+            $buf += "`n" + $line
+            # Closing line ends WITH the quote (base64 bodies never contain one).
+            if ($line -match '"\s*$') { $out[$open] = ($buf -replace '"\s*$', ''); $open = $null }
+            continue
+        }
+        $t = $line.Trim()
+        if (-not $t -or $t.StartsWith('#')) { continue }
+        $t = $t -replace '^export\s+', ''
+        if ($t -notmatch '^([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$') { continue }
+        $name = $Matches[1]; $value = $Matches[2]
+        if ($value.StartsWith('"')) {
+            if ($value.Length -gt 1 -and $value.Substring(1).TrimEnd().EndsWith('"')) {
+                $out[$name] = $value.Substring(1, $value.LastIndexOf('"') - 1)
+            } else { $open = $name; $buf = $value.Substring(1) }
+        } else {
+            # Unquoted: a `#` preceded by whitespace starts a comment (quoted values keep theirs,
+            # so a password containing # survives as long as it is quoted).
+            $out[$name] = ($value -replace '\s+#.*$', '').Trim().Trim("'").Trim()
+        }
+    }
+    if ($null -ne $open) { throw "$Path`: unterminated quoted value for $open" }
+    return $out
+}
+
+$UpdaterEnvFile = if ($env:OCW_UPDATER_ENV) { $env:OCW_UPDATER_ENV } else { Join-Path $Platform "..\.ocw-updater.env" }
+if (-not $env:TAURI_SIGNING_PRIVATE_KEY -and (Test-Path -LiteralPath $UpdaterEnvFile)) {
+    Write-Host "    updater signing env: $UpdaterEnvFile"
+    $dotenv = Read-DotEnv -Path $UpdaterEnvFile
+    foreach ($name in 'TAURI_SIGNING_PRIVATE_KEY', 'TAURI_SIGNING_PRIVATE_KEY_PASSWORD') {
+        if ($dotenv[$name]) {
+            [Environment]::SetEnvironmentVariable($name, $dotenv[$name])
+            # minisign key material always starts with "untrusted comment:" -- anything else is
+            # meant as a path, so fail here instead of late inside the bundler.
+            if ($name -eq 'TAURI_SIGNING_PRIVATE_KEY' -and
+                $dotenv[$name] -notmatch 'untrusted comment:' -and
+                -not (Test-Path -LiteralPath $dotenv[$name])) {
+                throw "TAURI_SIGNING_PRIVATE_KEY in $UpdaterEnvFile is neither key content nor an existing file."
+            }
+        }
+    }
+}
+
 $UpdaterArgs = @()
 if ($env:TAURI_SIGNING_PRIVATE_KEY) {
     # Pass the overlay as a FILE: inline JSON loses its quotes through the
