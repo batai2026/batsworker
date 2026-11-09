@@ -13,8 +13,27 @@ from typing import Any, Optional
 
 import aisuite as ai
 
+from ..secrets import state_dir
+
 _DEFAULT_MAX_LINES = 2000
 _MAX_LINE_CHARS = 500
+
+
+def _inside_state_dir(target: Path) -> bool:
+    """True when `target` is OpenWorker's own state directory.
+
+    That directory holds `secrets.json` (connector/MCP credentials) and
+    `sidecar-<port>.token` (the machine-local API token, which authenticates every
+    `/v1/*` route). Both are meant to stay out of the model's context, so reads are
+    refused here rather than left to the approval layer -- `read_file` is classified
+    as non-consequential and would otherwise run unapproved in every mode.
+    """
+    try:
+        target.resolve().relative_to(state_dir().resolve())
+        return True
+    except (ValueError, OSError):
+        return False
+
 
 _SCHEMA = {
     "type": "function",
@@ -80,6 +99,8 @@ def file_tools(workspace: str, roots: Optional[list] = None) -> list:
                     continue
             else:
                 return {"error": "path escapes the session's directories"}
+        if _inside_state_dir(target):
+            return {"error": "refusing to read OpenWorker's own state directory"}
         if not target.is_file():
             return {"error": f"not a file: {path}"}
 
