@@ -985,6 +985,16 @@ function ArtifactViewer({
           <PdfViewer dataUrl={content.data_url || ""} />
         ) : content.kind === "csv" ? (
           <CsvTable text={content.content || ""} />
+        ) : content.kind === "sheet" && /\.xls$/i.test(artifact.name) ? (
+          // ExcelJS only reads the OOXML (xlsx) container; a BIFF .xls would fail with a
+          // confusing zip error, so hand those to the real app.
+          <div className="artifact-open-prompt">
+            <Icon name="panelOpen" size={28} />
+            <p>{t("Legacy .xls files can't be previewed here — open in a spreadsheet app, or save as .xlsx.")}</p>
+            <button className="btn sm" onClick={() => revealArtifact(sessionId, artifact.path, "open")}>
+              {t("Open in default app")}
+            </button>
+          </div>
         ) : content.kind === "sheet" ? (
           <SheetViewer dataUrl={content.data_url || ""} />
         ) : content.kind === "folder" ? (
@@ -1090,8 +1100,9 @@ function CsvTable({ text }: { text: string }) {
   return <GridTable rows={rows} />;
 }
 
-// xlsx/xls preview via SheetJS (loaded on demand — it's a heavy module): sheet tabs + a capped
-// grid. Real spreadsheet work belongs in Numbers/Excel via "Open in default app".
+// xlsx preview via ExcelJS (loaded on demand — it's a heavy module): sheet tabs + a capped
+// grid. Legacy .xls is BIFF, which ExcelJS cannot read, so it goes to the open prompt instead.
+// Real spreadsheet work belongs in Numbers/Excel via "Open in default app".
 // WKWebView has no inline PDF plugin (<embed> shows a gray pane in the Tauri shell), so we
 // rasterize pages with pdf.js onto stacked canvases — same lazy-chunk pattern as SheetViewer.
 function PdfViewer({ dataUrl }: { dataUrl: string }) {
@@ -1144,9 +1155,32 @@ function PdfViewer({ dataUrl }: { dataUrl: string }) {
   );
 }
 
+// ExcelJS cell values are a tagged union (rich text, hyperlinks, formulas, errors); flatten them
+// to the plain strings GridTable renders instead of letting objects stringify to "[object Object]".
+function cellText(value: unknown): string {
+  if (value === null || value === undefined) return "";
+  if (value instanceof Date) {
+    const pad = (n: number) => String(n).padStart(2, "0");
+    return `${value.getFullYear()}-${pad(value.getMonth() + 1)}-${pad(value.getDate())}`;
+  }
+  if (typeof value === "object") {
+    const v = value as Record<string, unknown>;
+    if (Array.isArray(v.richText)) return (v.richText as { text?: string }[]).map((run) => run?.text ?? "").join("");
+    if ("result" in v) return cellText(v.result);
+    if ("error" in v) return String(v.error);
+    if ("text" in v) return String(v.text);
+    return "";
+  }
+  return String(value);
+}
+
+// A 100k-row sheet would otherwise be flattened into 100k string arrays before the 500-row display
+// cap ever applies; stop early and say so.
+const MAX_PARSED_ROWS = 2000;
+
 function SheetViewer({ dataUrl }: { dataUrl: string }) {
   const { t } = useI18n();
-  const [sheets, setSheets] = useState<{ name: string; rows: unknown[][] }[] | null>(null);
+  const [sheets, setSheets] = useState<{ name: string; rows: unknown[][]; truncated: boolean }[] | null>(null);
   const [error, setError] = useState("");
   const [active, setActive] = useState(0);
 
@@ -1156,15 +1190,33 @@ function SheetViewer({ dataUrl }: { dataUrl: string }) {
     setError("");
     setActive(0);
     const base64 = dataUrl.split(",")[1] || "";
-    import("xlsx")
-      .then((XLSX) => {
+    import("exceljs")
+      .then(async (mod) => {
+        // Vite resolves exceljs to its UMD browser bundle; depending on interop the constructors
+        // hang off the namespace or its default export.
+        const ExcelJS = mod.default ?? mod;
+        const bytes = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
+        const wb = new ExcelJS.Workbook();
+        // The .d.ts declares Node's Buffer; in the browser the reader is JSZip, which takes any
+        // binary (Uint8Array/ArrayBuffer), so the cast only satisfies the type checker.
+        await wb.xlsx.load(bytes as unknown as Parameters<typeof wb.xlsx.load>[0]);
         if (cancelled) return;
-        const wb = XLSX.read(base64, { type: "base64" });
         setSheets(
-          wb.SheetNames.map((name) => ({
-            name,
-            rows: XLSX.utils.sheet_to_json(wb.Sheets[name], { header: 1, defval: "" }) as unknown[][],
-          })),
+          wb.worksheets.map((ws) => {
+            const rows: unknown[][] = [];
+            ws.eachRow({ includeEmpty: false }, (row) => {
+              if (rows.length >= MAX_PARSED_ROWS) return;
+              const cells: unknown[] = [];
+              row.eachCell({ includeEmpty: true }, (cell, col) => {
+                // ExcelJS repeats the master value across every cell of a merged range; blank the
+                // slaves so a merged title spans columns instead of appearing once per column.
+                cells[col - 1] = cell.isMerged && cell.master !== cell ? "" : cellText(cell.value);
+              });
+              for (let i = 0; i < cells.length; i++) if (cells[i] === undefined) cells[i] = "";
+              rows.push(cells);
+            });
+            return { name: ws.name, rows, truncated: ws.rowCount > MAX_PARSED_ROWS };
+          }),
         );
       })
       .catch((e) => !cancelled && setError(String(e?.message || e)));
@@ -1187,7 +1239,14 @@ function SheetViewer({ dataUrl }: { dataUrl: string }) {
           ))}
         </div>
       )}
-      {sheet.rows.length ? <GridTable rows={sheet.rows} /> : <div className="rail-muted artifact-table-note">{t("Empty sheet.")}</div>}
+      {sheet.rows.length ? (
+        <GridTable
+          rows={sheet.rows}
+          note={sheet.truncated ? t("Only the first {n} rows were read.", { n: MAX_PARSED_ROWS }) : undefined}
+        />
+      ) : (
+        <div className="rail-muted artifact-table-note">{t("Empty sheet.")}</div>
+      )}
     </div>
   );
 }
