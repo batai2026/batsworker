@@ -1,0 +1,161 @@
+# OSV-Scanner suppressions — accepted dependency risk, with deadlines.
+#
+# POLICY
+#   * Only genuinely UNFIXABLE advisories belong in this file. Anything with a
+#     released fix gets upgraded, not listed here.
+#   * Every entry carries an `effectiveUntil` (not the deprecated `ignoreUntil`
+#     alias). When the date passes, the finding reappears in CI: the acceptance
+#     is debt with a due date, not silence.
+#   * Every entry explains WHY it is safe here — the code path, not the CVSS.
+#
+# This file is passed explicitly (`--config=osv-scanner.toml`) because
+# osv-scanner.toml does not propagate into subdirectories, and our lockfiles
+# live in surfaces/gui/ and stt/.
+#
+# Audit that produced this list: 2026-11-08 (94 unique advisories over 4 lockfile
+# sources). Re-measured 2026-11-09 against the tree with every fix applied: 20
+# remain, and they are the 20 entries below.
+#
+# The other 74 are absent because they were FIXED, not suppressed (all on
+# 2026-11-09, each suite green):
+#   * 35 PyPI - pypdf 18 and certifi 2 are reachable and were closed by raising the
+#     floors in requirements.txt; pip 10, pyasn1 4 and opentelemetry-api 1 are
+#     dev-only and never enter an installer.
+#   * 25 npm - 23 dev-toolchain advisories (vite, vitest, @vitest/mocker, tinypool,
+#     esbuild, postcss, postcss-selector-parser, browserslist, nanoid,
+#     source-map-js, baseline-browser-mapping) went into the tooling bump, and 2
+#     reachable xlsx advisories were closed by replacing SheetJS with exceljs.
+#     exceljs's own uuid arrived flagged (GHSA-w5hq-g745-h8pq) and is lifted to
+#     11.1.1 by the `overrides` block in surfaces/gui/package.json, so it never
+#     reaches this file either.
+#   * 14 crates.io - the rustls/webpki TLS stack 11 (reachable), plus tokio, anyhow
+#     and event-listener 3 that fell out of the same Rust bump.
+#
+# The 20 entries below are what genuinely cannot be fixed today. None of them is
+# reachable from this codebase: each is an unmaintained-crate notice, an advisory in
+# a crate pulled in only by such a crate, or the zip 4.x family behind
+# tauri-plugin-updater's minisign check.
+#
+# ---------------------------------------------------------------------------
+# zip 4.x — major bump (9.0.5) owned by tauri-plugin-updater, not by us.
+# ---------------------------------------------------------------------------
+# The only consumer is tauri-plugin-updater, which unpacks an update archive
+# only AFTER minisign signature verification. Every one of these advisories
+# needs a crafted ZIP to reach the extraction code, i.e. it needs the update
+# signing key. Revisit when tauri-plugin-updater adopts zip 9.
+
+[[IgnoredVulns]]
+id = "GHSA-m665-v7pm-7grj"
+effectiveUntil = 2027-03-01
+reason = "zip 4.x dual-header parser differential. Only extraction path in this repo is tauri-plugin-updater, which unpacks signed update archives after minisign verification. Fix requires zip 9.x, a major owned by the plugin."
+
+[[IgnoredVulns]]
+id = "GHSA-q7v9-x93c-xqv3"
+effectiveUntil = 2027-03-01
+reason = "zip symlink-target handling. Same upstream constraint: only reachable via the signed update archive, fix is major zip 9.0.0."
+
+[[IgnoredVulns]]
+id = "GHSA-8hxf-qr8p-62x4"
+effectiveUntil = 2027-03-01
+reason = "zip AES HMAC bypass on premature EOF. Signed-archive-only path; fix is major zip 9.0.0."
+
+[[IgnoredVulns]]
+id = "RUSTSEC-2026-0367"
+effectiveUntil = 2027-03-01
+reason = "zip SUID/SGID preservation during extraction. Update archives are signed; fix is major zip 9.0.0."
+
+[[IgnoredVulns]]
+id = "RUSTSEC-2026-0368"
+effectiveUntil = 2027-03-01
+reason = "zip symlink escape during ZipArchive::extract. Signed-update-only path; fix is major zip 9.0.0."
+
+[[IgnoredVulns]]
+id = "RUSTSEC-2026-0369"
+effectiveUntil = 2027-03-01
+reason = "zip applies Unix permissions through symlinks without confining the target. Signed-update-only path; fix is major zip 9.0.0."
+
+[[IgnoredVulns]]
+id = "RUSTSEC-2026-0429"
+effectiveUntil = 2027-03-01
+reason = "zip aborts the process on a symlink entry with a large declared size. Worst case is a failed update retry on a signed archive; fix is major zip 9.0.0."
+
+# ---------------------------------------------------------------------------
+# Tauri's own dependency tree — fixes require a Tauri/GTK major bump.
+# ---------------------------------------------------------------------------
+# Neither crate parses request or file input in this app: quick-xml is reached
+# through Tauri's own metadata handling, glib through Tauri's Linux GTK layer.
+# Their DuDoS classes need attacker-chosen XML/GTK input that never enters here.
+
+[[IgnoredVulns]]
+id = "RUSTSEC-2026-0194"
+effectiveUntil = 2027-03-01
+reason = "quick-xml quadratic time on duplicate attributes. Reachable only via Tauri's own plist/metadata parsing, not from app input. Fix (0.41.0) is a breaking 0.x bump inside Tauri's tree."
+
+[[IgnoredVulns]]
+id = "RUSTSEC-2026-0195"
+effectiveUntil = 2027-03-01
+reason = "quick-xml unbounded namespace allocation in NsReader. Same Tauri-internal-only path; fix is a breaking 0.x bump inside Tauri's tree."
+
+[[IgnoredVulns]]
+id = "GHSA-wrw7-89jp-8q8g"
+effectiveUntil = 2027-03-01
+reason = "glib VariantStrIter unsoundness. glib is Tauri's Linux GTK binding; this codebase never constructs a VariantStrIter. Fix is a breaking 0.18 -> 0.20 bump owned by Tauri."
+
+[[IgnoredVulns]]
+id = "RUSTSEC-2024-0429"
+effectiveUntil = 2027-03-01
+reason = "Same glib VariantStrIter unsoundness as GHSA-wrw7-89jp-8q8g (alias). Not constructed anywhere in this codebase; fix is a breaking bump owned by Tauri."
+
+# ---------------------------------------------------------------------------
+# Unmaintained crates (RUSTSEC informational; no vulnerability, no fix).
+# ---------------------------------------------------------------------------
+# These carry no exploit: the advisory says the crate is no longer maintained.
+# They ride in transitively (idna for the unic-* set, Tauri/zbus for the
+# zvariant set, a build-time proc-macro for proc-macro-error), so the only fix
+# is an upstream dependency swap. Reviewed again at the date below; drop the
+# entries whose parents have moved on by then.
+
+[[IgnoredVulns]]
+id = "RUSTSEC-2024-0370"
+effectiveUntil = 2027-08-01
+reason = "proc-macro-error is unmaintained — build-time only, no runtime code path. Removal requires upstream build deps to migrate."
+
+[[IgnoredVulns]]
+id = "RUSTSEC-2025-0075"
+effectiveUntil = 2027-08-01
+reason = "unic-char-range is unmaintained — transitive via idna. Informational only; no vulnerability."
+
+[[IgnoredVulns]]
+id = "RUSTSEC-2025-0080"
+effectiveUntil = 2027-08-01
+reason = "unic-common is unmaintained — transitive via idna. Informational only; no vulnerability."
+
+[[IgnoredVulns]]
+id = "RUSTSEC-2025-0081"
+effectiveUntil = 2027-08-01
+reason = "unic-char-property is unmaintained — transitive via idna. Informational only; no vulnerability."
+
+[[IgnoredVulns]]
+id = "RUSTSEC-2025-0098"
+effectiveUntil = 2027-08-01
+reason = "unic-ucd-version is unmaintained — transitive via idna. Informational only; no vulnerability."
+
+[[IgnoredVulns]]
+id = "RUSTSEC-2025-0100"
+effectiveUntil = 2027-08-01
+reason = "unic-ucd-ident is unmaintained — transitive via idna. Informational only; no vulnerability."
+
+[[IgnoredVulns]]
+id = "RUSTSEC-2026-0370"
+effectiveUntil = 2027-08-01
+reason = "zvariant is unmaintained — Linux D-Bus helper pulled by Tauri. Informational only; no vulnerability."
+
+[[IgnoredVulns]]
+id = "RUSTSEC-2026-0371"
+effectiveUntil = 2027-08-01
+reason = "zbus_names is unmaintained — Linux D-Bus helper pulled by Tauri. Informational only; no vulnerability."
+
+[[IgnoredVulns]]
+id = "RUSTSEC-2026-0372"
+effectiveUntil = 2027-08-01
+reason = "zvariant_derive is unmaintained — proc-macro sibling of zvariant, pulled by Tauri. Informational only."
