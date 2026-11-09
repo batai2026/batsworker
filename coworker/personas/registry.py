@@ -517,7 +517,7 @@ class PersonaRegistry:
                     for info in zf.infolist():
                         name = info.filename
                         target = (root / name).resolve()
-                        if not str(target).startswith(str(root.resolve())):
+                        if not target.is_relative_to(root.resolve()):
                             raise FileNotFoundError(f"unsafe path in archive: {name}")
                     zf.extractall(root)
             except zipfile.BadZipFile as e:
