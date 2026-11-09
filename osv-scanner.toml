@@ -12,21 +12,30 @@
 # osv-scanner.toml does not propagate into subdirectories, and our lockfiles
 # live in surfaces/gui/ and stt/.
 #
-# Audit that produced this list: 2026-11-08 (94 unique advisories over 4 sources).
+# Audit that produced this list: 2026-11-08 (94 unique advisories over 4 lockfile
+# sources). Re-measured 2026-11-09 against the tree with every fix applied: 20
+# remain, and they are the 20 entries below.
 #
-# Of those 94, 72 are absent from this file because they were UPGRADED, not
-# suppressed (all on 2026-11-09, each suite green):
-#   * 34 closed by upgrade — pypdf 18, rustls/webpki 11, certifi 2 (reachable),
-#     plus tokio/anyhow/event-listener 3 that fell out of the same Rust bump.
-#   * 23 npm dev-toolchain advisories — vite, vitest, @vitest/mocker, tinypool,
+# The other 74 are absent because they were FIXED, not suppressed (all on
+# 2026-11-09, each suite green):
+#   * 35 PyPI - pypdf 18 and certifi 2 are reachable and were closed by raising the
+#     floors in requirements.txt; pip 10, pyasn1 4 and opentelemetry-api 1 are
+#     dev-only and never enter an installer.
+#   * 25 npm - 23 dev-toolchain advisories (vite, vitest, @vitest/mocker, tinypool,
 #     esbuild, postcss, postcss-selector-parser, browserslist, nanoid,
-#     source-map-js, baseline-browser-mapping. Dev-only and never bundled, but
-#     every one has a released fix, so they went into the tooling bump instead.
-#   * 15 dev-only Python (pip, pyasn1, opentelemetry-api) — never in an installer.
+#     source-map-js, baseline-browser-mapping) went into the tooling bump, and 2
+#     reachable xlsx advisories were closed by replacing SheetJS with exceljs.
+#     exceljs's own uuid arrived flagged (GHSA-w5hq-g745-h8pq) and is lifted to
+#     11.1.1 by the `overrides` block in surfaces/gui/package.json, so it never
+#     reaches this file either.
+#   * 14 crates.io - the rustls/webpki TLS stack 11 (reachable), plus tokio, anyhow
+#     and event-listener 3 that fell out of the same Rust bump.
 #
-# The 22 entries below are what genuinely cannot be fixed today:
-#   20 not reachable from this codebase, 2 xlsx (reachable, no npm release).
-
+# The 20 entries below are what genuinely cannot be fixed today. None of them is
+# reachable from this codebase: each is an unmaintained-crate notice, an advisory in
+# a crate pulled in only by such a crate, or the zip 4.x family behind
+# tauri-plugin-updater's minisign check.
+#
 # ---------------------------------------------------------------------------
 # zip 4.x — major bump (9.0.5) owned by tauri-plugin-updater, not by us.
 # ---------------------------------------------------------------------------
@@ -150,23 +159,3 @@ reason = "zbus_names is unmaintained — Linux D-Bus helper pulled by Tauri. Inf
 id = "RUSTSEC-2026-0372"
 effectiveUntil = 2027-08-01
 reason = "zvariant_derive is unmaintained — proc-macro sibling of zvariant, pulled by Tauri. Informational only."
-
-# ---------------------------------------------------------------------------
-# xlsx 0.18.5 — reachable, but no fix exists on the npm registry.
-# ---------------------------------------------------------------------------
-# DECISION NEEDED, dated 2027-02-01: SheetJS stopped publishing to npm after
-# 0.18.5; the patched line (0.20.x) ships only from cdn.sheetjs.com. Either
-# vendor that tarball (and add typosquat/extraction checks to the build) or
-# replace the parser. RightRail.tsx runs XLSX.read() on a user-opened
-# spreadsheet, so this one is genuinely attacker-reachable — it is listed here
-# only to keep CI green while the decision is made, NOT because it is safe.
-
-[[IgnoredVulns]]
-id = "GHSA-4r6h-8v6p-xvw6"
-effectiveUntil = 2027-02-01
-reason = "SheetJS prototype pollution. Reachable from RightRail.tsx on a user-opened spreadsheet, but no fixed version exists on npm (0.18.5 is the last npm release). Tracked for a vendor-or-replace decision by 2027-02-01."
-
-[[IgnoredVulns]]
-id = "GHSA-5pgg-2g8v-p4x9"
-effectiveUntil = 2027-02-01
-reason = "SheetJS ReDoS. Same npm-registry dead end; same vendor-or-replace decision by 2027-02-01."
