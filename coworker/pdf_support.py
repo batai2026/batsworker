@@ -28,6 +28,9 @@ logger = logging.getLogger(__name__)
 
 MAX_EXTRACT_CHARS = 200_000  # match attachments.MAX_TEXT_CHARS
 RASTER_SCALE = 2.0  # ~144 dpi; readable text without giant payloads
+# ~12 MB once decoded. The GUI's attach-time upload cap is far below this; the
+# point is to reject an oversized body before base64 decoding it into memory.
+_MAX_PDF_DATA_URL = 16_000_000
 RASTER_MAX_PAGES = 100  # hard ceiling; the user's page threshold gates at attach time
 
 FALLBACK_MODES = ("text", "images")
@@ -82,6 +85,8 @@ def inspect(file_data: str) -> dict[str, Any]:
 
     Never raises: `{"ok": False, "error": ...}` for anything unreadable.
     """
+    if not isinstance(file_data, str) or len(file_data) > _MAX_PDF_DATA_URL:
+        return {"ok": False, "error": "PDF data URL is missing or too large"}
     raw = _pdf_bytes(file_data)
     if raw is None:
         return {"ok": False, "error": "not a PDF data URL"}
