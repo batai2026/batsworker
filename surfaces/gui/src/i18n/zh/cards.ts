@@ -234,6 +234,8 @@ export const zhCards = {
   Edit: "编辑",
   "Empty file.": "空文件。",
   "Empty sheet.": "空工作表。",
+  "Only the first {n} rows were read.": "只读取了前 {n} 行。",
+  "Legacy .xls files can't be previewed here — open in a spreadsheet app, or save as .xlsx.": "旧版 .xls 文件无法在此预览 —— 请用表格应用打开，或另存为 .xlsx。",
   Enable: "启用",
   event: "事件",
   "Event-triggered — the condition can't be edited here. Recreate the automation to change it.": "事件触发——条件无法在此编辑。如需更改请重建该自动化。",
