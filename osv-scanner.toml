@@ -3,9 +3,12 @@
 # POLICY
 #   * Only genuinely UNFIXABLE advisories belong in this file. Anything with a
 #     released fix gets upgraded, not listed here.
-#   * Every entry carries an `effectiveUntil` (not the deprecated `ignoreUntil`
-#     alias). When the date passes, the finding reappears in CI: the acceptance
-#     is debt with a due date, not silence.
+#   * Every entry carries an `ignoreUntil` date. When it passes, the finding
+#     reappears in CI: the acceptance is debt with a due date, not silence.
+#     NOTE the key name: osv-scanner v2 spells it `ignoreUntil` on
+#     [[IgnoredVulns]]; `effectiveUntil` exists only on [[PackageOverrides]].
+#     The loader is strict about unknown keys, so using the wrong one here
+#     rejects the entire file and the scan never starts.
 #   * Every entry explains WHY it is safe here — the code path, not the CVSS.
 #
 # This file is passed explicitly (`--config=osv-scanner.toml`) because
@@ -46,37 +49,37 @@
 
 [[IgnoredVulns]]
 id = "GHSA-m665-v7pm-7grj"
-effectiveUntil = 2027-03-01
+ignoreUntil = 2027-03-01
 reason = "zip 4.x dual-header parser differential. Only extraction path in this repo is tauri-plugin-updater, which unpacks signed update archives after minisign verification. Fix requires zip 9.x, a major owned by the plugin."
 
 [[IgnoredVulns]]
 id = "GHSA-q7v9-x93c-xqv3"
-effectiveUntil = 2027-03-01
+ignoreUntil = 2027-03-01
 reason = "zip symlink-target handling. Same upstream constraint: only reachable via the signed update archive, fix is major zip 9.0.0."
 
 [[IgnoredVulns]]
 id = "GHSA-8hxf-qr8p-62x4"
-effectiveUntil = 2027-03-01
+ignoreUntil = 2027-03-01
 reason = "zip AES HMAC bypass on premature EOF. Signed-archive-only path; fix is major zip 9.0.0."
 
 [[IgnoredVulns]]
 id = "RUSTSEC-2026-0367"
-effectiveUntil = 2027-03-01
+ignoreUntil = 2027-03-01
 reason = "zip SUID/SGID preservation during extraction. Update archives are signed; fix is major zip 9.0.0."
 
 [[IgnoredVulns]]
 id = "RUSTSEC-2026-0368"
-effectiveUntil = 2027-03-01
+ignoreUntil = 2027-03-01
 reason = "zip symlink escape during ZipArchive::extract. Signed-update-only path; fix is major zip 9.0.0."
 
 [[IgnoredVulns]]
 id = "RUSTSEC-2026-0369"
-effectiveUntil = 2027-03-01
+ignoreUntil = 2027-03-01
 reason = "zip applies Unix permissions through symlinks without confining the target. Signed-update-only path; fix is major zip 9.0.0."
 
 [[IgnoredVulns]]
 id = "RUSTSEC-2026-0429"
-effectiveUntil = 2027-03-01
+ignoreUntil = 2027-03-01
 reason = "zip aborts the process on a symlink entry with a large declared size. Worst case is a failed update retry on a signed archive; fix is major zip 9.0.0."
 
 # ---------------------------------------------------------------------------
@@ -88,22 +91,22 @@ reason = "zip aborts the process on a symlink entry with a large declared size. 
 
 [[IgnoredVulns]]
 id = "RUSTSEC-2026-0194"
-effectiveUntil = 2027-03-01
+ignoreUntil = 2027-03-01
 reason = "quick-xml quadratic time on duplicate attributes. Reachable only via Tauri's own plist/metadata parsing, not from app input. Fix (0.41.0) is a breaking 0.x bump inside Tauri's tree."
 
 [[IgnoredVulns]]
 id = "RUSTSEC-2026-0195"
-effectiveUntil = 2027-03-01
+ignoreUntil = 2027-03-01
 reason = "quick-xml unbounded namespace allocation in NsReader. Same Tauri-internal-only path; fix is a breaking 0.x bump inside Tauri's tree."
 
 [[IgnoredVulns]]
 id = "GHSA-wrw7-89jp-8q8g"
-effectiveUntil = 2027-03-01
+ignoreUntil = 2027-03-01
 reason = "glib VariantStrIter unsoundness. glib is Tauri's Linux GTK binding; this codebase never constructs a VariantStrIter. Fix is a breaking 0.18 -> 0.20 bump owned by Tauri."
 
 [[IgnoredVulns]]
 id = "RUSTSEC-2024-0429"
-effectiveUntil = 2027-03-01
+ignoreUntil = 2027-03-01
 reason = "Same glib VariantStrIter unsoundness as GHSA-wrw7-89jp-8q8g (alias). Not constructed anywhere in this codebase; fix is a breaking bump owned by Tauri."
 
 # ---------------------------------------------------------------------------
@@ -117,45 +120,45 @@ reason = "Same glib VariantStrIter unsoundness as GHSA-wrw7-89jp-8q8g (alias). N
 
 [[IgnoredVulns]]
 id = "RUSTSEC-2024-0370"
-effectiveUntil = 2027-08-01
+ignoreUntil = 2027-08-01
 reason = "proc-macro-error is unmaintained — build-time only, no runtime code path. Removal requires upstream build deps to migrate."
 
 [[IgnoredVulns]]
 id = "RUSTSEC-2025-0075"
-effectiveUntil = 2027-08-01
+ignoreUntil = 2027-08-01
 reason = "unic-char-range is unmaintained — transitive via idna. Informational only; no vulnerability."
 
 [[IgnoredVulns]]
 id = "RUSTSEC-2025-0080"
-effectiveUntil = 2027-08-01
+ignoreUntil = 2027-08-01
 reason = "unic-common is unmaintained — transitive via idna. Informational only; no vulnerability."
 
 [[IgnoredVulns]]
 id = "RUSTSEC-2025-0081"
-effectiveUntil = 2027-08-01
+ignoreUntil = 2027-08-01
 reason = "unic-char-property is unmaintained — transitive via idna. Informational only; no vulnerability."
 
 [[IgnoredVulns]]
 id = "RUSTSEC-2025-0098"
-effectiveUntil = 2027-08-01
+ignoreUntil = 2027-08-01
 reason = "unic-ucd-version is unmaintained — transitive via idna. Informational only; no vulnerability."
 
 [[IgnoredVulns]]
 id = "RUSTSEC-2025-0100"
-effectiveUntil = 2027-08-01
+ignoreUntil = 2027-08-01
 reason = "unic-ucd-ident is unmaintained — transitive via idna. Informational only; no vulnerability."
 
 [[IgnoredVulns]]
 id = "RUSTSEC-2026-0370"
-effectiveUntil = 2027-08-01
+ignoreUntil = 2027-08-01
 reason = "zvariant is unmaintained — Linux D-Bus helper pulled by Tauri. Informational only; no vulnerability."
 
 [[IgnoredVulns]]
 id = "RUSTSEC-2026-0371"
-effectiveUntil = 2027-08-01
+ignoreUntil = 2027-08-01
 reason = "zbus_names is unmaintained — Linux D-Bus helper pulled by Tauri. Informational only; no vulnerability."
 
 [[IgnoredVulns]]
 id = "RUSTSEC-2026-0372"
-effectiveUntil = 2027-08-01
+ignoreUntil = 2027-08-01
 reason = "zvariant_derive is unmaintained — proc-macro sibling of zvariant, pulled by Tauri. Informational only."
