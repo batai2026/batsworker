@@ -68,6 +68,31 @@ def test_protected_paths_cover_the_grant_and_trust_stores():
     assert {"config.toml", "risk_overrides.json", "workspace_trust.json", "coworker.db"} <= names
 
 
+def test_egress_policy_is_a_protected_setting(tmp_path, monkeypatch):
+    """The egress allowlist is the memory of which hosts the user approved.
+
+    Writing it is therefore equivalent to granting every host in it without asking, so
+    it belongs on the same floor as `risk_overrides.json`. The state dir is put INSIDE
+    the workspace here on purpose: that is the Docker layout this used to ship (state
+    under /workspace, the agent's session root), where root scoping alone cannot catch a
+    write -- only the floor can. Without the entry, the bypass-approvals engine allows
+    the write and the shell redirect outright.
+    """
+    state = tmp_path / ".coworker-state"
+    state.mkdir()
+    monkeypatch.setenv("COWORKER_STATE_DIR", str(state))
+    target = str(state / "egress-policy.json")
+    eng = _engine(tmp_path, Mode.BYPASS_APPROVALS)
+
+    write = eng.evaluate("write_file", {"path": target, "content": "{}"}, None)
+    assert not write.allowed and not write.needs_user
+    assert "own settings" in write.reason
+
+    shell = eng.evaluate("run_shell", {"command": f'echo "{{}}" > "{target}"'}, None)
+    assert not shell.allowed and not shell.needs_user
+    assert "own settings" in shell.reason
+
+
 # -- in-project files that run later --------------------------------------------
 @pytest.mark.parametrize(
     "rel",
