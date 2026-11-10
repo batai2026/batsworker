@@ -12,6 +12,7 @@ Thread-safe (RLock); writes are atomic-ish (temp + replace).
 
 from __future__ import annotations
 
+import ipaddress
 import json
 import os
 import threading
@@ -28,6 +29,37 @@ def _normalize_domain(domain: str) -> str:
         d = d.split("://", 1)[1]
     d = d.split("/", 1)[0].split(":", 1)[0].split("@")[-1]
     return d.strip(".").strip()
+
+
+# Suffixes that must never be granted: matching is "host or any subdomain", so
+# granting one of these would allow the whole name space from a single click.
+_PUBLIC_SUFFIXES = frozenset(
+    {
+        "com", "net", "org", "edu", "gov", "mil", "int", "info", "biz", "io",
+        "co", "dev", "app", "cloud", "uk", "de", "fr", "jp", "cn", "ru", "nl",
+        "co.uk", "org.uk", "ac.uk", "gov.uk", "com.au", "co.jp", "com.br",
+        "github.io", "appspot.com", "azurewebsites.net", "herokuapp.com",
+    }
+)
+
+
+def _grantable(domain: str) -> bool:
+    """True only for a host a user can meaningfully consent to.
+
+    ``is_allowed`` matches the host itself or any subdomain, so a bare public
+    suffix ("com", "co.uk") turns one approval into the whole TLD. Require at
+    least two labels and reject public suffixes and bare IPs; an IP needs its own
+    explicit decision, and callers that really mean one can still list it in the
+    config/session allowlists, which are not gated by this check.
+    """
+    if not domain or "." not in domain:
+        return False
+    try:
+        ipaddress.ip_address(domain)
+        return False
+    except ValueError:
+        pass
+    return domain not in _PUBLIC_SUFFIXES
 
 
 class EgressPolicy:
@@ -48,7 +80,7 @@ class EgressPolicy:
             self._domains = {
                 _normalize_domain(k): str(v or "")
                 for k, v in data.items()
-                if _normalize_domain(k)
+                if _grantable(_normalize_domain(k))
             }
         except FileNotFoundError:
             self._domains = {}
@@ -88,7 +120,7 @@ class EgressPolicy:
 
     def add_domain(self, domain: str, reason: str = "") -> bool:
         d = _normalize_domain(domain)
-        if not d:
+        if not d or not _grantable(d):
             return False
         with self._lock:
             self._domains[d] = (reason or "").strip()

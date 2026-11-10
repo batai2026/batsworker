@@ -542,7 +542,10 @@ def test_server_sets_explicit_websocket_frame_limit(tmp_path, monkeypatch):
         SimpleNamespace(run=lambda app, **kwargs: seen.update(app=app, **kwargs)),
     )
 
-    server_run.main(["--cwd", str(tmp_path), "--port", "8766"])
+    # --cwd must not contain the state dir: startup refuses that layout on purpose
+    # (tests/conftest.py puts COWORKER_STATE_DIR under tmp_path).
+    (tmp_path / "ws").mkdir()
+    server_run.main(["--cwd", str(tmp_path / "ws"), "--port", "8766"])
 
     assert seen["app"] is fake_app
     assert seen["ws_max_size"] == server_run._WS_MAX_FRAME_BYTES

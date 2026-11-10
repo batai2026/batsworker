@@ -136,6 +136,26 @@ def _ensure_api_token(port: int) -> Path | None:
     )
 
 
+def _refuse_state_dir_inside_workspace(cwd: str | None) -> None:
+    """Fail closed when the state dir sits inside the session root.
+
+    `read_file` is scoped to the session's directories, so a state dir under the
+    workspace would hand `secrets.json` and the sidecar API token to the model. The
+    read-side check in `tools.files` is the real guard; this stops a deployment that
+    still relies on the dangerous layout instead of silently serving it.
+    """
+    root = Path(cwd or os.getcwd()).resolve()
+    sdir = state_dir().resolve()
+    try:
+        sdir.relative_to(root)
+    except ValueError:
+        return
+    raise SystemExit(
+        f"refusing to start: state dir {sdir} is inside the workspace {root}; "
+        "set COWORKER_STATE_DIR to a path outside the session's directories"
+    )
+
+
 def main(argv=None) -> None:
     _ensure_ca_bundle()
     cfg = load_config()  # global config supplies defaults
@@ -150,6 +170,7 @@ def main(argv=None) -> None:
     parser.add_argument("--host", default=cfg.host)
     parser.add_argument("--port", type=int, default=cfg.port)
     args = parser.parse_args(argv)
+    _refuse_state_dir_inside_workspace(args.cwd)
 
     # Publish the ACTUAL bound port so loopback URLs (the managed-OAuth callback)
     # target this process, not config.port. The desktop shell runs the sidecar on

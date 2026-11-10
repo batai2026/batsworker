@@ -42,15 +42,20 @@ COPY --from=build /usr/local/lib/python3.12/site-packages /usr/local/lib/python3
 COPY --from=build /usr/local/bin/openworker-server /usr/local/bin/openworker-server
 
 ENV PYTHONUNBUFFERED=1 \
-    COWORKER_STATE_DIR=/workspace/.coworker-state
+    COWORKER_STATE_DIR=/home/openworker/.coworker-state
 
 # Create the unprivileged user and give it the two paths the server writes to
 # (the state dir holds the generated sidecar token, written mode 0600).
+#
+# The state dir MUST stay outside /workspace: that directory is the agent's session
+# root, and `read_file` only checks that a path is inside the session directories --
+# so a state dir under /workspace would let the model read secrets.json (connector
+# credentials) and sidecar-<port>.token (the full local API token) with no approval.
 RUN groupadd --gid "${OPENWORKER_GID}" openworker \
     && useradd --uid "${OPENWORKER_UID}" --gid "${OPENWORKER_GID}" --create-home \
         --home-dir /home/openworker --shell /usr/sbin/nologin openworker \
-    && mkdir -p /workspace/.coworker-state \
-    && chown -R openworker:openworker /workspace
+    && mkdir -p /home/openworker/.coworker-state \
+    && chown -R openworker:openworker /workspace /home/openworker/.coworker-state
 
 USER openworker
 
