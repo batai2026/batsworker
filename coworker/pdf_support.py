@@ -28,8 +28,9 @@ logger = logging.getLogger(__name__)
 
 MAX_EXTRACT_CHARS = 200_000  # match attachments.MAX_TEXT_CHARS
 RASTER_SCALE = 2.0  # ~144 dpi; readable text without giant payloads
-# ~12 MB once decoded. The GUI's attach-time upload cap is far below this; the
-# point is to reject an oversized body before base64 decoding it into memory.
+# ~12 MB once decoded. The GUI's attach-time upload cap is far below this; the point is
+# to reject an oversized body before base64 decoding it into memory. Enforced in
+# `_pdf_bytes`, i.e. at the decode itself, not only by callers.
 _MAX_PDF_DATA_URL = 16_000_000
 RASTER_MAX_PAGES = 100  # hard ceiling; the user's page threshold gates at attach time
 
@@ -71,8 +72,23 @@ def _digest(file_data: str) -> str:
 
 
 def _pdf_bytes(file_data: str) -> Optional[bytes]:
+    """Decode a PDF data URL, or None if it is not one.
+
+    This is the ONLY base64 decode point for PDFs, so the size bound lives here rather
+    than only at the callers. `b64decode` allocates ~3 bytes per 4 input characters, so
+    a caller that decodes first and validates after has already paid the allocation it
+    was trying to avoid -- and a fourth caller added later would reintroduce exactly the
+    unbounded decode this guards. Callers may still check earlier, to distinguish "too
+    large" from "not a PDF" (`inspect`) or to cap tighter (`attachments.MAX_PDF_CHARS`,
+    which is below this floor); this is the backstop none of them can forget.
+
+    Note the bound cannot stop the oversized string from existing -- it arrived in the
+    message -- only the decode-time expansion of it.
+    """
     prefix = "data:application/pdf;base64,"
-    if not isinstance(file_data, str) or not file_data.startswith(prefix):
+    if not isinstance(file_data, str) or len(file_data) > _MAX_PDF_DATA_URL:
+        return None
+    if not file_data.startswith(prefix):
         return None
     try:
         return base64.b64decode(file_data[len(prefix) :], validate=False)
