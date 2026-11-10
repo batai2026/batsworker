@@ -128,6 +128,11 @@ def protected_paths() -> list[Path]:
         base / "coworker.db",  # session records carry the saved "always allow" grants
         base / "secrets.json",
         base / "inbox_routing.json",
+        # The record of which hosts the user approved for network egress. Left writable, one
+        # ordinary-looking write (or a shell redirect) becomes a permanent blanket allow for
+        # any host -- the approval gate in `request_egress` is exactly what this file is the
+        # memory of, so an agent that can rewrite it has already cleared its own gate.
+        base / "egress-policy.json",
     ]
 
 
