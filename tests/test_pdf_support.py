@@ -118,3 +118,48 @@ def test_adapt_leaves_other_parts_alone():
 def test_set_fallback_mode_rejects_junk():
     assert pdf_support.set_fallback_mode("images") == "images"
     assert pdf_support.set_fallback_mode("bogus") == "text"
+
+
+# -- the decode point is the bound --------------------------------------------
+
+
+def test_pdf_bytes_refuses_oversized_before_decoding(monkeypatch):
+    """The size cap must sit at the decode, not only at today's callers.
+
+    `b64decode` expands 4 input characters into 3 bytes, so decoding first and
+    validating after pays the allocation the cap exists to prevent. Assert the
+    decode is *not reached*, which is the property a `len()` check in a caller
+    cannot provide: a fourth caller would simply not have it.
+
+    The cap is lowered here so the test stays cheap; the real one is 16M chars.
+    """
+    fits = _blank_pdf_url()
+    monkeypatch.setattr(pdf_support, "_MAX_PDF_DATA_URL", len(fits) + 10)
+    decoded: list[int] = []
+    real = pdf_support.base64.b64decode
+
+    def spy(data, *args, **kwargs):
+        decoded.append(len(data))
+        return real(data, *args, **kwargs)
+
+    monkeypatch.setattr(pdf_support.base64, "b64decode", spy)
+
+    oversized = "data:application/pdf;base64," + "A" * (len(fits) + 11)
+    assert pdf_support._pdf_bytes(oversized) is None
+    assert decoded == [], "oversized body reached b64decode"
+
+    # ...and the cap must not reject bodies that fit.
+    assert pdf_support._pdf_bytes(fits) is not None
+    assert len(decoded) == 1
+
+
+def test_pdf_bytes_cap_does_not_change_what_callers_already_reject():
+    """The floor sits above the attach cap, so no input that works today changes.
+
+    `attachments.MAX_PDF_CHARS` is what the message path enforces; the decode floor
+    is a backstop for callers that have no cap, so it must be the looser of the two
+    -- otherwise it would silently start rejecting PDFs that used to attach.
+    """
+    from coworker import attachments
+
+    assert attachments.MAX_PDF_CHARS <= pdf_support._MAX_PDF_DATA_URL
