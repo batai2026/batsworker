@@ -57,6 +57,24 @@ jobs:
         shell: pwsh
         run: pytest tests -q
 
+  # The image layout is a security boundary: a state dir inside /workspace hands the model
+  # `secrets.json` and the sidecar token via unapproved `read_file`, and uid 0 turns a
+  # tool-execution escape into host privilege. Nothing else builds the image -- docker.yml
+  # runs on tags only -- so an unsafe Dockerfile could reach GHCR unexercised. Build it on
+  # every PR and assert the boundary from inside the container.
+  docker-image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build image
+        run: docker build -t openworker:ci .
+      - name: Container isolation self-check
+        run: |
+          docker run --rm \
+            -v "${{ github.workspace }}/scripts/check_container_state_isolation.py:/check/check.py:ro" \
+            --entrypoint python \
+            openworker:ci /check/check.py
+
   gui-unit:
     runs-on: ubuntu-latest
     steps:
