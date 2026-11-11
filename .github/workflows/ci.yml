@@ -37,7 +37,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e ".[messaging,dev,bedrock]"
       - name: Test
-        run: pytest tests -q
+        run: pytest tests -q --cov --cov-report=term
 
   # Windows: catch platform-only failures (time.tzset, UTF-8 decoding, PowerShell
   # shell semantics) that the Linux CI can never see. The two known Windows failures
@@ -56,7 +56,7 @@ jobs:
           pip install -e ".[messaging,dev,bedrock]"
       - name: Test
         shell: pwsh
-        run: pytest tests -q
+        run: pytest tests -q --cov --cov-report=term
 
   # The image layout is a security boundary: a state dir inside /workspace hands the model
   # `secrets.json` and the sidecar token via unapproved `read_file`, and uid 0 turns a

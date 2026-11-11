@@ -49,7 +49,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8", "pytest-asyncio", "httpx", "ruff>=0.17.3"]
+dev = ["pytest>=8", "pytest-asyncio", "httpx", "ruff>=0.17.3", "pytest-cov>=6"]
 # Inbound messaging listeners (outbound send_message needs only httpx, already a core dep).
 # aiohttp is slack-bolt's Socket Mode transport at runtime (and the FakeSlack test harness
 # drives the real handler) — declare it so CI installs it, not just transitively.
@@ -100,3 +100,15 @@ testpaths = ["tests"]
 # console script (CI) does not put the root on sys.path the way `python -m pytest` does.
 pythonpath = ["."]
 asyncio_mode = "auto"
+
+[tool.coverage.run]
+# `pytest --cov` picks this up, so CI and a local run measure the same thing.
+source = ["coworker"]
+
+[tool.coverage.report]
+skip_covered = true
+# Gate, not a target. Measured 83.38% over the full suite on 2026-11-11
+# (21155/25373 statements); the floor sits a point under that to absorb
+# platform variance. Raise it as the suite stabilises -- lowering it is a
+# deliberate decision, not a way to unblock a red build.
+fail_under = 82
