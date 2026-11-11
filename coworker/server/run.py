@@ -159,6 +159,9 @@ def _mount_frontend_spa(app, frontend_dist: str) -> bool:
             return FileResponse(str(target))
         return FileResponse(str(root / "index.html"))
 
+    # Tells the token middleware that this app also serves the UI: a navigation
+    # cannot carry `x-openworker-token`, so the shell and its assets are exempt.
+    app.state.serves_spa = True
     return True
 
 

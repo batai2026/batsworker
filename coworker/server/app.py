@@ -44,6 +44,19 @@ def _origin_allowed(origin: str | None) -> bool:
     return origin is None or bool(_ALLOWED_ORIGIN_RE.match(origin))
 
 
+# Paths that keep the sidecar token requirement when the SPA is served from the sidecar.
+# Everything else belongs to the bundled UI: the shell, `assets/`, `icons/`, the service
+# worker and client-side routes. A top-level navigation cannot attach
+# `x-openworker-token`, so gating those means the desktop window loads 401 forever.
+# The API prefixes stay gated; these paths only serve the app's own build output.
+_SPA_GATED_PREFIXES = ("/v1", "/ws", "/docs", "/redoc", "/openapi.json")
+
+
+def _spa_owned_path(path: str) -> bool:
+    """True for a path the bundled SPA serves (shell, assets, client-side route)."""
+    return not path.startswith(_SPA_GATED_PREFIXES)
+
+
 # Caps on inbound WebSocket traffic. The loopback socket is unauthenticated (any local
 # process can reach it), so bound frames, messages, and per-connection request rate before
 # building model content or starting a turn.
@@ -222,6 +235,9 @@ def create_app(manager: SessionManager) -> FastAPI:
             # (identity + access), designed to be handed to external harnesses and
             # other machines — which can never hold the machine-local sidecar token.
             or request.url.path.startswith("/v1/board/")
+            # The desktop shell serves the SPA from this same origin, and a browser
+            # navigation cannot carry the header; those paths must stay reachable.
+            or (getattr(app.state, "serves_spa", False) and _spa_owned_path(request.url.path))
             or _request_authenticated(request)
         ):
             return await call_next(request)

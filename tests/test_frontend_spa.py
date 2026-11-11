@@ -92,6 +92,16 @@ def test_spa_target_rejects_absolute_path(dist: Path) -> None:
     assert _spa_target(dist.resolve(), absolute) is None
 
 
+def test_spa_owned_path_exempts_the_ui_but_not_the_api() -> None:
+    """A navigation cannot carry the sidecar header, so the UI must be reachable."""
+    from coworker.server.app import _spa_owned_path
+
+    for path in ("/", "/index.html", "/assets/app.js", "/sw.js", "/sessions/abc"):
+        assert _spa_owned_path(path) is True, path
+    for path in ("/v1", "/v1/sessions", "/ws/chat", "/docs", "/openapi.json", "/redoc"):
+        assert _spa_owned_path(path) is False, path
+
+
 def test_main_forwards_frontend_dist_to_build_app(tmp_path: Path, monkeypatch) -> None:
     """The desktop shell's `--frontend-dist` must reach `build_app`, not just argparse."""
     import sys
