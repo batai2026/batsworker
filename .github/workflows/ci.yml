@@ -1,5 +1,6 @@
-# App CI — the coworker Python suite, the GUI unit tests, and the hermetic
-# Playwright e2e suite (mocked /v1 + WS; no model or network needed).
+# App CI — the coworker Python suite, the desktop shell and STT sidecar (Rust),
+# the GUI unit tests, and the hermetic Playwright e2e suite (mocked /v1 + WS; no
+# model or network needed).
 
 name: CI
 
@@ -139,3 +140,60 @@ jobs:
       - name: e2e
         working-directory: surfaces/gui
         run: npm run e2e
+
+  # Rust: neither the desktop shell nor `stt/` had any CI coverage, so two classes
+  # of breakage could only be found by a human running cargo locally -- a
+  # feature/config mismatch (e.g. `protocol-asset` without `assetProtocol`, which
+  # tauri-build rejects) and a type error inside a `#[cfg(windows)]` block, which
+  # no other job compiles.
+  #
+  # The SPA is bundled as a resource, and tauri-build hard-fails when `../dist` is
+  # missing, so the frontend is built first. That also lets the last step assert
+  # the copied layout: a `dist/**/*` resource glob flattens `assets/` into the
+  # dist root, which leaves index.html pointing at files that are not there.
+  rust:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: surfaces/gui/package-lock.json
+      - name: Build the SPA that gets bundled
+        working-directory: surfaces/gui
+        shell: pwsh
+        run: |
+          npm ci
+          npm run build
+      # Pinned like release.yml: third-party actions by commit, GitHub-owned by tag.
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+        with:
+          workspaces: |
+            surfaces/gui/src-tauri
+            stt
+      - name: Locate libclang (whisper-rs bindgen)
+        # windows-latest usually ships LLVM already; install only when it is absent
+        # so the job does not depend on an image detail that can change.
+        shell: pwsh
+        run: |
+          $llvm = "C:\Program Files\LLVM\bin"
+          if (-not (Test-Path (Join-Path $llvm "libclang.dll"))) {
+            choco install llvm -y --no-progress
+          }
+          "LIBCLANG_PATH=$llvm" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+      - name: Clippy
+        working-directory: surfaces/gui/src-tauri
+        shell: pwsh
+        run: cargo clippy --all-targets -- -D warnings
+      - name: Assert the bundled SPA keeps its layout
+        shell: bash
+        run: |
+          test -f surfaces/gui/src-tauri/target/debug/dist/index.html
+          test -d surfaces/gui/src-tauri/target/debug/dist/assets
+      - name: Test the STT sidecar
+        shell: pwsh
+        run: cargo test --manifest-path stt/Cargo.toml
