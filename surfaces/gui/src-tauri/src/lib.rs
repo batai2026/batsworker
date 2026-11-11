@@ -43,6 +43,26 @@ fn free_port() -> u16 {
         .unwrap_or(8765)
 }
 
+/// Wait (bounded) until the sidecar accepts loopback connections on `port`.
+///
+/// Only used when the webview points at the sidecar's own origin: the first
+/// navigation would otherwise race uvicorn's bind and show a blank window.
+fn wait_for_port(port: u16, timeout: std::time::Duration) -> bool {
+    let addr = std::net::SocketAddr::from(([127, 0, 0, 1], port));
+    let deadline = std::time::Instant::now() + timeout;
+    loop {
+        if std::net::TcpStream::connect_timeout(&addr, std::time::Duration::from_millis(250))
+            .is_ok()
+        {
+            return true;
+        }
+        if std::time::Instant::now() >= deadline {
+            return false;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    }
+}
+
 fn launch_token() -> String {
     format!("{}{}", Uuid::new_v4().simple(), Uuid::new_v4().simple())
 }
@@ -907,10 +927,24 @@ pub fn run() {
             install_update
         ])
         .setup(move |app| {
+            // The SPA can be served by the sidecar on the API's own origin
+            // (`--frontend-dist`), which sidesteps Tauri 2.11's embedded-server
+            // deadlock on Windows. `dist/` exists only when it was bundled as a
+            // resource, so a dev run — or a bundle that lost the resource — falls
+            // back to Tauri's embedded copy rather than loading a 404.
+            let frontend_dist = app
+                .path()
+                .resource_dir()
+                .ok()
+                .map(|dir| dir.join("dist"))
+                .filter(|dir| dir.join("index.html").is_file());
             // 1. Start the Python server sidecar on the chosen port (inherits our env).
             let mut server_cmd = Command::new(server_bin());
+            server_cmd.args(["--host", "127.0.0.1", "--port", &port.to_string()]);
+            if let Some(dist) = frontend_dist.as_deref() {
+                server_cmd.arg("--frontend-dist").arg(dist);
+            }
             server_cmd
-                .args(["--host", "127.0.0.1", "--port", &port.to_string()])
                 // The user's real shell environment (PATH to their tools, AWS_PROFILE,
                 // KUBECONFIG, …) — see sidecar_env(). Applied FIRST so the explicit COWORKER_*
                 // vars below always win over anything a profile happens to export.
@@ -974,18 +1008,50 @@ pub fn run() {
 
             // 2. Build the window, injecting the sidecar endpoints before the SPA loads.
             //    Overlay title bar (macOS): traffic lights float over the edge-to-edge UI.
-            let mut builder =
-                WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
-                    .title("OpenWorker")
-                    .inner_size(1360.0, 900.0)
-                    .min_inner_size(980.0, 640.0)
-                    // Let the WEBVIEW receive OS file drags: Tauri's own drag-drop handler
-                    // otherwise intercepts them, so the composer's HTML5 onDrop (attach by
-                    // dragging a file in) never fired in the desktop shell — browser dev
-                    // worked, DMGs didn't. main.tsx guards against drops outside the
-                    // composer navigating the page.
-                    .disable_drag_drop_handler()
-                    .initialization_script(&inject);
+            //    Serving the SPA from the sidecar means the first navigation can race
+            //    uvicorn's bind; wait briefly and keep the embedded copy if it never
+            //    opens — the SPA's own startup retry then covers a slow server instead
+            //    of the window showing a navigation error.
+            let frontend_dist = match frontend_dist {
+                Some(dir) if wait_for_port(port, std::time::Duration::from_secs(4)) => Some(dir),
+                _ => None,
+            };
+            // Only the fallback loads from `https://tauri.localhost`, and that origin
+            // reaching the loopback API is what WebView2 refuses by default. The normal
+            // path is same-origin with the sidecar and needs no exceptions, so the
+            // relaxed flags stay scoped to the degraded path instead of the whole
+            // process. Must be set before the WebView2 environment is created.
+            #[cfg(windows)]
+            {
+                if frontend_dist.is_none() {
+                    std::env::set_var(
+                        "WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS",
+                        "--allow-running-insecure-content \
+                         --disable-features=BlockInsecurePrivateNetworkRequests",
+                    );
+                }
+            }
+            // The URL follows the port the sidecar actually bound — a fixed literal
+            // would hand our injected API token to whatever process squatted it.
+            let webview_url = match frontend_dist.as_ref() {
+                Some(_) => WebviewUrl::External(
+                    format!("http://127.0.0.1:{port}/index.html")
+                        .parse()
+                        .expect("loopback frontend URL"),
+                ),
+                None => WebviewUrl::App("index.html".into()),
+            };
+            let mut builder = WebviewWindowBuilder::new(app, "main", webview_url)
+                .title("OpenWorker")
+                .inner_size(1360.0, 900.0)
+                .min_inner_size(980.0, 640.0)
+                // Let the WEBVIEW receive OS file drags: Tauri's own drag-drop handler
+                // otherwise intercepts them, so the composer's HTML5 onDrop (attach by
+                // dragging a file in) never fired in the desktop shell — browser dev
+                // worked, DMGs didn't. main.tsx guards against drops outside the
+                // composer navigating the page.
+                .disable_drag_drop_handler()
+                .initialization_script(&inject);
             #[cfg(target_os = "macos")]
             {
                 builder = builder
