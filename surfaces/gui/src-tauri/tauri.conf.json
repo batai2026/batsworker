@@ -28,7 +28,8 @@
       "icons/icon.ico"
     ],
     "resources": {
-      "binaries/sidecar": "sidecar"
+      "binaries/sidecar": "sidecar",
+      "../dist": "dist"
     },
     "macOS": {
       "entitlements": "entitlements.plist",

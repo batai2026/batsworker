@@ -535,7 +535,7 @@ def test_server_sets_explicit_websocket_frame_limit(tmp_path, monkeypatch):
 
     monkeypatch.setattr(server_run, "_ensure_ca_bundle", lambda: None)
     monkeypatch.setattr(server_run, "_exit_when_orphaned", lambda: None)
-    monkeypatch.setattr(server_run, "build_app", lambda *args: fake_app)
+    monkeypatch.setattr(server_run, "build_app", lambda *args, **kwargs: fake_app)
     monkeypatch.setitem(
         sys.modules,
         "uvicorn",
