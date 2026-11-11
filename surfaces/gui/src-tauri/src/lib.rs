@@ -1041,7 +1041,7 @@ pub fn run() {
                 ),
                 None => WebviewUrl::App("index.html".into()),
             };
-            let mut builder = WebviewWindowBuilder::new(app, "main", webview_url)
+            let builder = WebviewWindowBuilder::new(app, "main", webview_url)
                 .title("OpenWorker")
                 .inner_size(1360.0, 900.0)
                 .min_inner_size(980.0, 640.0)
@@ -1052,16 +1052,16 @@ pub fn run() {
                 // composer navigating the page.
                 .disable_drag_drop_handler()
                 .initialization_script(&inject);
+            // Shadowing rather than `mut`: the macOS tweaks are the only reassignment,
+            // so a plain `mut` would warn as unused on Windows and Linux.
             #[cfg(target_os = "macos")]
-            {
-                builder = builder
-                    .title_bar_style(tauri::TitleBarStyle::Overlay)
-                    .hidden_title(true)
-                    // Nudge the traffic lights down + in so they sit vertically centered in a
-                    // roomier top strip, aligned with the sidebar toggle and title rather than
-                    // jammed against the top edge.
-                    .traffic_light_position(tauri::LogicalPosition::new(19.0, 24.0));
-            }
+            let builder = builder
+                .title_bar_style(tauri::TitleBarStyle::Overlay)
+                .hidden_title(true)
+                // Nudge the traffic lights down + in so they sit vertically centered in a
+                // roomier top strip, aligned with the sidebar toggle and title rather than
+                // jammed against the top edge.
+                .traffic_light_position(tauri::LogicalPosition::new(19.0, 24.0));
             let win = builder.build()?;
 
             // Close-to-tray: hide instead of quitting so the sidecar keeps running.
