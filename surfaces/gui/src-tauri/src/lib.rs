@@ -1009,11 +1009,12 @@ pub fn run() {
             // 2. Build the window, injecting the sidecar endpoints before the SPA loads.
             //    Overlay title bar (macOS): traffic lights float over the edge-to-edge UI.
             //    Serving the SPA from the sidecar means the first navigation can race
-            //    uvicorn's bind; wait briefly and keep the embedded copy if it never
-            //    opens — the SPA's own startup retry then covers a slow server instead
-            //    of the window showing a navigation error.
+            //    uvicorn's bind; wait for the port and keep the embedded copy if it never
+            //    opens. 15s is deliberate: a cold PyInstaller onedir start measured 6.5s
+            //    on Windows (Python boot + DLL load), so a tighter budget silently demotes
+            //    a healthy launch to the embedded copy and shows a blank window.
             let frontend_dist = match frontend_dist {
-                Some(dir) if wait_for_port(port, std::time::Duration::from_secs(4)) => Some(dir),
+                Some(dir) if wait_for_port(port, std::time::Duration::from_secs(15)) => Some(dir),
                 _ => None,
             };
             // Only the fallback loads from `https://tauri.localhost`, and that origin
