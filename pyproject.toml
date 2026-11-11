@@ -58,6 +58,9 @@ messaging = ["python-telegram-bot>=21", "slack-bolt>=1.18", "aiohttp>=3.9"]
 browser = ["playwright>=1.44"]
 # AWS Bedrock provider (lazy-imported; desktop builds bundle it, pip users opt in).
 bedrock = ["boto3>=1.34"]
+# Packaging toolchain for a release build. `typer` is build-time only: PyInstaller walks
+# the `mcp` package and `mcp.cli` calls sys.exit() at import when typer is absent.
+build = ["pyinstaller>=6", "typer"]
 
 [project.scripts]
 openworker = "coworker.cli:main"
