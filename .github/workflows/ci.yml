@@ -136,7 +136,13 @@ jobs:
         run: npm ci
       - name: Install Playwright browsers
         working-directory: surfaces/gui
-        run: npx playwright install --with-deps chromium
+        # No `--with-deps`: that flag shells out to apt-get, and a DNS hiccup on the
+        # runner ("Temporary failure resolving azure.archive.ubuntu.com") burned 10
+        # minutes and turned the job red while every other job passed. The image
+        # already carries Chromium's shared libraries; if it ever stops doing so,
+        # Playwright names the missing package and it goes back in as an explicit
+        # `apt-get install` line rather than a blanket dependency sweep.
+        run: npx playwright install chromium
       - name: e2e
         working-directory: surfaces/gui
         run: npm run e2e
