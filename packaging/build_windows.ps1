@@ -74,6 +74,15 @@ Write-Host "==> [1/3] PyInstaller: bundling openworker-server ($Triple)" -Foregr
     (Join-Path $Here "openworker-server.spec")
 if ($LASTEXITCODE -ne 0) { throw "PyInstaller failed (exit $LASTEXITCODE)" }
 
+# The shell (src-tauri/src/lib.rs) passes flags to this binary that only the Python CLI
+# defines. A bundle older than a CLI change still starts, then dies at launch with
+# "unrecognized arguments" -- nothing else in the build catches that, so compare the two
+# CLIs here and fail before the stale binary is staged.
+Write-Host "==> [1.5/3] checking the bundled CLI against the Python CLI" -ForegroundColor Cyan
+& (Join-Path $Venv "Scripts\python.exe") (Join-Path $Platform "scripts\check_sidecar_cli.py") `
+    (Join-Path $Here "dist\openworker-server\openworker-server.exe")
+if ($LASTEXITCODE -ne 0) { throw "bundled sidecar CLI is stale (rebuild after CLI changes)" }
+
 Write-Host "==> [2/3] staging sidecar resources" -ForegroundColor Cyan
 # Onedir bundle (exe + _internal\) ships via Tauri `resources`, landing at <install>\sidecar\
 # next to the app exe — onefile's per-launch self-extraction cost seconds of boot splash.

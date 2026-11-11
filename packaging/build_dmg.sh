@@ -77,6 +77,15 @@ echo "==> [1/5] PyInstaller: bundling openworker-server ($TRIPLE)"
 "$PLATFORM/.venv/bin/pyinstaller" --noconfirm --clean \
   --distpath "$HERE/dist" --workpath "$HERE/build" "$HERE/openworker-server.spec"
 
+# The shell (src-tauri/src/lib.rs) passes flags to this binary that only the Python CLI
+# defines. A bundle older than a CLI change still starts, then dies at launch with
+# "unrecognized arguments" -- nothing else in the build catches that, so compare the two
+# CLIs here and fail before the stale binary is staged.
+echo "==> [1.5/5] checking the bundled CLI against the Python CLI"
+"$PLATFORM/.venv/bin/python" "$PLATFORM/scripts/check_sidecar_cli.py" \
+  "$HERE/dist/openworker-server/openworker-server" \
+  || { echo "bundled sidecar CLI is stale (rebuild after CLI changes)" >&2; exit 1; }
+
 echo "==> [2/5] staging sidecar resources"
 # Onedir bundle (exe + _internal/) ships via Tauri `resources` as Contents/Resources/sidecar/
 # — onefile's per-launch self-extraction cost 6-7s of boot splash. rm -rf first: cp WRITES
