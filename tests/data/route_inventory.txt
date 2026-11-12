@@ -2,8 +2,6 @@ GET	/openapi.json	openapi
 GET	/docs	swagger_ui_html
 GET	/docs/oauth2-redirect	swagger_ui_redirect
 GET	/redoc	redoc_html
-GET	/v1/health	health
-GET	/v1/agents	agents
 GET	/v1/personas	personas
 POST	/v1/personas/install	install_persona
 GET	/v1/personas/catalog	persona_catalog
@@ -125,7 +123,11 @@ DELETE	/v1/egress/policy/{domain}	egress_policy_delete
 GET	/v1/settings/sandbox	sandbox_settings_get
 PUT	/v1/settings/sandbox	sandbox_settings_put
 GET	/v1/settings/openshell/status	openshell_status_get
+GET	/v1/health	health
+GET	/v1/agents	agents
 POST	/v1/chat/completions	chat_completions
+WEBSOCKET	/ws/session/{session_id}	ws_session
+WEBSOCKET	/ws/events	ws_events
 GET	/v1/mcp	mcp_list
 POST	/v1/mcp	mcp_add
 PATCH	/v1/mcp/{name}	mcp_patch
@@ -216,5 +218,3 @@ DELETE	/v1/automations/{task_id}	automation_delete
 POST	/v1/automations/{task_id}/seen	automations_seen
 POST	/v1/automations/{task_id}/run	automation_run
 POST	/v1/automations/{task_id}/runs/{run_id}/finalize	automation_run_finalize
-WEBSOCKET	/ws/session/{session_id}	ws_session
-WEBSOCKET	/ws/events	ws_events

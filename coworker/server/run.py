@@ -11,8 +11,9 @@ from pathlib import Path
 from ..config import load_config
 from ..permissions import Mode
 from ..secrets import state_dir, write_private_text
-from .app import _WS_MAX_FRAME_BYTES, create_app
+from .app import create_app
 from .manager import SessionManager
+from .routes.ws import WS_MAX_FRAME_BYTES
 
 
 def _exit_when_orphaned() -> None:
@@ -267,7 +268,7 @@ def main(argv=None) -> None:
         _exit_when_orphaned()
         app = build_app(args.cwd, args.model, args.mode, frontend_dist=args.frontend_dist)
         uvicorn.run(
-            app, host=args.host, port=args.port, ws_max_size=_WS_MAX_FRAME_BYTES
+            app, host=args.host, port=args.port, ws_max_size=WS_MAX_FRAME_BYTES
         )
     finally:
         if generated_token_path is not None:
