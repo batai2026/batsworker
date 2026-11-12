@@ -167,6 +167,104 @@ def test_debug_inject_route_stays_env_gated(tmp_path, monkeypatch):
     assert len(debug) == len(default) + 1
 
 
+def _router_factories() -> list[tuple[str, str, object]]:
+    """`(module, factory name, factory)` for every `build_*_router` under routes/."""
+    import importlib
+    import inspect
+    import pkgutil
+
+    from coworker.server import routes as routes_pkg
+
+    factories: list[tuple[str, str, object]] = []
+    for info in pkgutil.iter_modules(routes_pkg.__path__):
+        module = importlib.import_module(f"{routes_pkg.__name__}.{info.name}")
+        for name, obj in inspect.getmembers(module, inspect.isfunction):
+            if name.startswith("build_") and name.endswith("_router"):
+                factories.append((info.name, name, obj))
+    return factories
+
+
+def test_every_router_module_is_wired(tmp_path):
+    """A router module nobody includes is dead code — and invisible to every other guard
+    here, because the route table never learns those routes exist.
+
+    So this walks `coworker/server/routes/`, builds each `build_*_router(manager[, token])`
+    and asserts that every route it declares is present in the real app with the same path
+    and methods. Behavioural on purpose: it does not care HOW `create_app` wires them, only
+    that the mounted surface actually contains them.
+
+    Written because the connectors round shipped `routes/observability.py` and
+    `routes/attachments_messaging.py` without including either, and nothing failed.
+    """
+    import inspect
+    import pkgutil
+
+    from coworker.server import routes as routes_pkg
+    from coworker.server.app import create_app
+    from coworker.server.manager import SessionManager
+
+    manager = SessionManager(data_dir=tmp_path / "wiring")
+    mounted = {
+        (path, method_label)
+        for path, method_label, _name, _route in _flatten(
+            create_app(manager).router.routes, ""
+        )
+    }
+
+    factories = _router_factories()
+    assert len(factories) >= 15, "router discovery found suspiciously few factories"
+
+    # Every module in routes/ must expose a factory under the naming convention, otherwise
+    # discovery silently skips it and the check below passes while the module stays dead.
+    modules = {info.name for info in pkgutil.iter_modules(routes_pkg.__path__)}
+    discovered = {module for module, _name, _factory in factories}
+    assert not (modules - discovered), (
+        "module(s) in routes/ expose no build_*_router factory, so the wiring check cannot "
+        "see them: " + repr(sorted(modules - discovered))
+    )
+
+    unwired = []
+    for module, name, factory in factories:
+        positional = [
+            p
+            for p in inspect.signature(factory).parameters.values()
+            if p.kind in (p.POSITIONAL_ONLY, p.POSITIONAL_OR_KEYWORD)
+        ]
+        router = factory(manager, "") if len(positional) == 2 else factory(manager)
+        missing = [
+            f"{method_label} {path} ({endpoint})"
+            for path, method_label, endpoint, _route in _flatten(router.routes, "")
+            if (path, method_label) not in mounted
+        ]
+        if missing:
+            unwired.append(
+                f"routes/{module}.py::{name} is not mounted by create_app:\n    "
+                + "\n    ".join(missing)
+            )
+
+    assert not unwired, "\n\n".join(unwired)
+
+
+def test_app_declares_no_routes_of_its_own():
+    """`app.py` is assembly now; a route declared there belongs in a router instead.
+
+    Not a correctness rule but a shape rule: the split's whole point is that the surface is
+    discoverable one-module-per-domain and `create_app` reads as a table of contents. Relax
+    it deliberately if a genuinely app-level route ever appears.
+    """
+    import re
+
+    source = (Path(__file__).parents[1] / "coworker" / "server" / "app.py").read_text(
+        encoding="utf-8"
+    )
+    declared = [
+        line.strip()
+        for line in source.splitlines()
+        if re.match(r"\s*@app\.(get|post|put|patch|delete|websocket|api_route)\(", line)
+    ]
+    assert not declared, "routes declared in app.py instead of a router: " + repr(declared)
+
+
 if __name__ == "__main__":
     import tempfile
 
