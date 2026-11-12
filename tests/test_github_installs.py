@@ -400,6 +400,11 @@ def _capture_requests(monkeypatch):
         return {"ok": True, "data": {"items": []}}
 
     monkeypatch.setattr(integration_tools, "_request", fake_request)
+    # Batch A moved these tools to tools_mail_calendar, which resolves
+    # _request off toolkit; patch both until every platform module moved.
+    import coworker.connectors.toolkit as toolkit
+
+    monkeypatch.setattr(toolkit, "_request", fake_request)
     return seen
 
 
@@ -500,6 +505,11 @@ def test_list_commits_filters_and_trims(tmp_path, monkeypatch):
         }
 
     monkeypatch.setattr(integration_tools, "_request", fake_request)
+    # Batch A moved these tools to tools_mail_calendar, which resolves
+    # _request off toolkit; patch both until every platform module moved.
+    import coworker.connectors.toolkit as toolkit
+
+    monkeypatch.setattr(toolkit, "_request", fake_request)
     out = _tool(secrets, "github_list_commits")(
         "acme",
         "site",

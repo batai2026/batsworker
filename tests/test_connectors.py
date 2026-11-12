@@ -30,6 +30,20 @@ def test_target_round_trip():
     assert parse_target("slack:C1:168.9") == ("slack", "C1", "168.9")
 
 
+def _patch_request(monkeypatch, fake):
+    """Patch the HTTP choke point everywhere the connector tools resolve it.
+
+    Tools still in `integration_tools.py` read the name imported into that module; tools
+    moved to `tools_mail_calendar.py` (batch A) read it off `toolkit`. Until the last batch
+    moves, both have to be patched or the moved tools escape the fake and hit the network.
+    """
+    import coworker.connectors.integration_tools as integration_tools
+    import coworker.connectors.toolkit as toolkit
+
+    monkeypatch.setattr(integration_tools, "_request", fake)
+    monkeypatch.setattr(toolkit, "_request", fake)
+
+
 def test_target_invalid():
     for bad in ("", "telegram", "telegram:", ":123"):
         with pytest.raises(ValueError):
@@ -846,7 +860,7 @@ def _connected_tools(tmp_path, monkeypatch, calls):
         )
         return {"ok": True, "data": {}}
 
-    monkeypatch.setattr(it, "_request", fake_request)
+    _patch_request(monkeypatch, fake_request)
     return {t.__name__: t for t in it.make_integration_tools(secrets)}
 
 
@@ -1149,7 +1163,7 @@ def test_docusign_account_discovery_caches(tmp_path, monkeypatch):
             }
         return {"ok": True, "data": {}}
 
-    monkeypatch.setattr(it, "_request", fake_request)
+    _patch_request(monkeypatch, fake_request)
     tools = {t.__name__: t for t in it.make_integration_tools(secrets)}
 
     tools["docusign_list_templates"]()
@@ -1179,7 +1193,7 @@ def test_drive_read_file_exports_google_docs(tmp_path, monkeypatch):
             },
         }
 
-    monkeypatch.setattr(it, "_request", fake_request)
+    _patch_request(monkeypatch, fake_request)
     tools = {t.__name__: t for t in it.make_integration_tools(secrets)}
     out = tools["drive_read_file"]("f1")
     assert out["ok"] is True and out["content"] == "Doc body text"
@@ -1191,7 +1205,7 @@ def test_drive_read_file_exports_google_docs(tmp_path, monkeypatch):
             "data": {"mimeType": "application/vnd.google-apps.drawing"},
         }
 
-    monkeypatch.setattr(it, "_request", fake_request_drawing)
+    _patch_request(monkeypatch, fake_request_drawing)
     tools = {t.__name__: t for t in it.make_integration_tools(secrets)}
     assert "cannot read" in tools["drive_read_file"]("f2")["error"]
 
@@ -1223,7 +1237,7 @@ def test_notion_read_page_flattens_blocks(tmp_path, monkeypatch):
             }
         return {"ok": True, "data": {"properties": {"p": 1}, "url": "https://n/x"}}
 
-    monkeypatch.setattr(it, "_request", fake_request)
+    _patch_request(monkeypatch, fake_request)
     tools = {t.__name__: t for t in it.make_integration_tools(secrets)}
     out = tools["notion_read_page"]("pg1")
     assert out["text"] == "Title\nBody text"
@@ -1321,7 +1335,7 @@ def test_outlook_managed_multi_account_keys_by_email(tmp_path, monkeypatch):
         calls.append({"url": url, "headers": headers or {}})
         return {"ok": True, "data": {}}
 
-    monkeypatch.setattr(it, "_request", fake_request)
+    _patch_request(monkeypatch, fake_request)
     tools = {t.__name__: t for t in it.make_integration_tools(secrets)}
     out = tools["outlook_search_messages"]("q", account="ops@acme.com")
     assert out["account"] == "ops@acme.com"
@@ -1361,7 +1375,7 @@ def test_outlook_calendar_tools_hit_the_right_graph_endpoints(tmp_path, monkeypa
         calls.append({"method": method, "url": url, "params": params, "json": json})
         return {"ok": True, "data": {}}
 
-    monkeypatch.setattr(it, "_request", fake_request)
+    _patch_request(monkeypatch, fake_request)
     tools = {t.__name__: t for t in it.make_integration_tools(secrets)}
 
     tools["outlook_create_event"](
@@ -1425,7 +1439,7 @@ def test_batch2_account_param_picks_the_profile(tmp_path, monkeypatch):
         calls.append({"url": url, "headers": headers or {}})
         return {"ok": True, "data": {}}
 
-    monkeypatch.setattr(it, "_request", fake_request)
+    _patch_request(monkeypatch, fake_request)
     tools = {t.__name__: t for t in it.make_integration_tools(secrets)}
 
     out = tools["posthog_query"]("SELECT 1", account="22")
