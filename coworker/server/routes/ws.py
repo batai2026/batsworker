@@ -14,7 +14,6 @@ request rate.
 
 from __future__ import annotations
 
-from pathlib import Path
 import asyncio
 import json
 from collections import deque
@@ -24,6 +23,7 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 from ..auth import origin_allowed, websocket_authenticated
 from ..manager import SessionManager
+from ..ws_prompts import PromptGateway
 from ...attachments import (
     MAX_ATTACHMENTS as _MAX_ATTACHMENTS,
     MAX_IMAGE_CHARS,
@@ -31,10 +31,8 @@ from ...attachments import (
     MAX_TEXT_CHARS,
     build_user_content,
 )
-from ...engine import ApprovalOutcome
-from ...inbox import VIS_INBOX, VIS_INLINE, args_preview
+from ...inbox import VIS_INLINE
 from ...permissions import Mode
-from ... import toolchain
 
 # Caps on inbound WebSocket traffic. The loopback socket is unauthenticated (any local
 # process can reach it), so bound frames, messages, and per-connection request rate before
@@ -74,337 +72,15 @@ def build_ws_router(manager: SessionManager, api_token: str) -> APIRouter:
             return
         await ws.accept(subprotocol="openworker" if api_token else None)
         agent = ws.query_params.get("agent") or "code"
+        # All prompt plumbing (the five askers + where each item shows) lives in
+        # ws_prompts.PromptGateway; this socket owns the turn loop and the wire.
+        prompts = PromptGateway(manager, ws, session_id, agent)
 
         # All four interactive prompts (approval / question / directory / plan) are parked as Inbox
         # items and awaited via inbox.wait — so they survive a dropped socket (redelivered on
         # reconnect) and can be resolved from any surface. `visibility` decides where they SHOW:
         # Unattended → the cross-session Inbox; attended → inline in this session only. The agent
         # stays blocked until the item is resolved (live WS response, REST, or a bound channel).
-        def _visibility() -> str:
-            return (
-                VIS_INBOX
-                if manager.unattended.is_unattended(session_id)
-                else VIS_INLINE
-            )
-
-        async def _mirror(item) -> None:
-            # Unattended items mirror to a bound channel as buttons (see mirror_inbox_item).
-            await manager.mirror_inbox_item(item)
-
-        def _route() -> str:
-            return manager.inbox_routing.route_for(session_id, agent)
-
-        async def approver(_request) -> ApprovalOutcome:
-            # The engine has already emitted PERMISSION_REQUIRED (the live inline card). Park the
-            # item so the answer can also come from the Inbox / a reconnect / after a restart.
-            item = manager.inbox.add_approval(
-                session_id,
-                f"Run `{_request.tool_name}`?",
-                body="\n".join(
-                    p
-                    for p in (
-                        (getattr(_request, "reason", "") or "").strip(),
-                        args_preview(getattr(_request, "arguments", None)),
-                    )
-                    if p
-                ),
-                inbox=_route(),
-                visibility=_visibility(),
-                # Automation-run context (manual "Run now" rides this socket): lets the
-                # card offer the task-persistent "Allow every time" (§25). {} elsewhere.
-                data=manager.approval_prompt_data(session_id, _request),
-                tool_call_id=getattr(_request, "tool_call_id", None),
-            )
-            if (
-                item.state == "pending"
-            ):  # freshly raised (not a durable-resume re-raise)
-                manager.persist_session(
-                    session_id
-                )  # the pending tool call is now on disk
-                if item.visibility == VIS_INBOX:
-                    await _mirror(item)
-            resolution = await manager.inbox.wait(item.id)
-            # Accept every vocabulary: the live card sends once/always_tool/always_command/
-            # always_task/deny; the Inbox / a channel send allow/always/deny.
-            return manager.approval_outcome(resolution, _request, session_id)
-
-        async def question_asker(args: dict, tool_call_id=None) -> dict:
-            # ask_user (engine does NOT emit the event — we do, only when attended).
-            from ..tools.ask import answer_result, question_item_fields
-
-            fields = question_item_fields(args)
-            if fields is None:  # engine guards too; belt-and-braces
-                return {"answer": "", "error": "no question"}
-            item = manager.inbox.add_question(
-                session_id,
-                inbox=_route(),
-                visibility=_visibility(),
-                tool_call_id=tool_call_id,
-                **fields,
-            )
-            if item.state == "pending":
-                manager.persist_session(session_id)
-                if item.visibility == VIS_INBOX:
-                    await _mirror(item)
-                else:
-                    await ws.send_json(
-                        {
-                            "type": "question_requested",
-                            "data": {
-                                "question": item.title,
-                                "options": item.options,
-                                "allow_text": item.allow_text,
-                                "multi": item.multi,
-                                "header": item.header,
-                                "questions": item.questions,
-                            },
-                        }
-                    )
-            return answer_result(item.questions, await manager.inbox.wait(item.id))
-
-        async def tool_requester(args: dict, tool_call_id=None) -> dict:
-            """Park a TOOL_REQUESTED prompt, then install the PINNED build if approved.
-
-            Declining is a first-class outcome: the agent is told to fall back and disclose
-            the gap rather than drop the check (OPE-85). Installs only ever come from the
-            pinned registry with its digest verified — an approval is consent to install
-            THAT artifact, not licence to fetch whatever a prompt asked for.
-            """
-            name = str(args.get("name", "")).strip()
-            info = toolchain.describe(name)
-            if not info:
-                # Not in the pinned catalog: never show an install card that can only
-                # end in "no pinned build" AFTER approval (owner-hit 2026-08-20 — agents
-                # routed ordinary brew/pip installs through the card). Steer to the
-                # shell, which has its own approval flow.
-                return {
-                    "installed": False,
-                    "error": (
-                        f"'{name}' is not in the pinned tool catalog "
-                        f"({', '.join(sorted(toolchain.MANAGED))}). Install it yourself "
-                        "with the shell (brew/pip/…, subject to the normal command "
-                        "approval), or proceed without it and note the gap."
-                    ),
-                }
-            item = manager.inbox.add_tool_request(
-                session_id,
-                f"Install {name}?" if name else "Install a tool?",
-                body=str(args.get("reason", "")),
-                inbox=_route(),
-                visibility=_visibility(),
-                data={
-                    "tool": name,
-                    "installable": bool(info and info.get("installable")),
-                    "version": (info or {}).get("version", ""),
-                    "summary": (info or {}).get("summary", ""),
-                    "url": (info or {}).get("url", ""),
-                    "source": (info or {}).get("source", ""),
-                },
-                tool_call_id=tool_call_id,
-            )
-            if item.state == "pending":
-                manager.persist_session(session_id)
-                if item.visibility == VIS_INBOX:
-                    await _mirror(item)
-            resp = _parse_json(await manager.inbox.wait(item.id))  # {approved}
-            if not resp.get("approved"):
-                return {
-                    "installed": False,
-                    "reason": "the user declined to install it",
-                }
-            if not info or not info.get("installable"):
-                return {
-                    "installed": False,
-                    "error": f"no pinned build of {name} is available for this platform",
-                }
-            try:
-                path = await asyncio.to_thread(toolchain.install, name)
-            except Exception as exc:  # noqa: BLE001 - surfaced to the agent verbatim
-                return {"installed": False, "error": str(exc)}
-            return {"installed": True, "path": path, "version": info["version"]}
-
-        async def directory_requester(args: dict, tool_call_id=None) -> dict:
-            # The engine has already emitted DIRECTORY_REQUESTED. Park, await, then apply the grant.
-            item = manager.inbox.add_directory(
-                session_id,
-                "Grant access to a folder?",
-                body=str(args.get("reason", "")),
-                inbox=_route(),
-                visibility=_visibility(),
-                data={
-                    "path": str(args.get("path", "")),
-                    "writable": bool(args.get("writable", False)),
-                    "primary": bool(args.get("primary", False)),
-                },
-                tool_call_id=tool_call_id,
-            )
-            if item.state == "pending":
-                manager.persist_session(session_id)
-                if item.visibility == VIS_INBOX:
-                    await _mirror(item)
-            resp = _parse_json(
-                await manager.inbox.wait(item.id)
-            )  # {granted, path, writable}
-            if not resp.get("granted"):
-                return {"granted": False, "reason": "the user declined the request"}
-            path = (resp.get("path") or args.get("path") or "").strip()
-            if not path:
-                return {"granted": False, "error": "no directory was provided"}
-            writable = bool(resp.get("writable", args.get("writable", False)))
-            if bool(args.get("primary", False)):
-                # Root promotion (workspace-scratch-design.md §5) — the shell cd inside
-                # is blocking, keep it off the event loop.
-                promo = await asyncio.to_thread(
-                    manager.promote_workspace, session_id, path
-                )
-                if promo.get("ok"):
-                    return {
-                        "granted": True,
-                        "path": promo["path"],
-                        "writable": True,
-                        "primary": True,
-                        "note": (
-                            "This folder is now the session's workspace. For the rest "
-                            "of this turn, address it by absolute path."
-                        ),
-                    }
-                # Promotion refused (e.g. the session already has a workspace): still
-                # honor the grant as a plain additional folder.
-                res = manager.add_root(session_id, path, writable)
-                if not res.get("ok"):
-                    return {
-                        "granted": False,
-                        "error": promo.get("error", "could not promote"),
-                    }
-                return {
-                    "granted": True,
-                    "path": path,
-                    "writable": writable,
-                    "primary": False,
-                    "note": promo.get("error", "")
-                    + " — granted as an additional folder instead",
-                }
-            res = manager.add_root(session_id, path, writable)
-            if not res.get("ok"):
-                return {
-                    "granted": False,
-                    "error": res.get("error", "could not grant access"),
-                }
-            primary = next(
-                (
-                    r
-                    for r in res.get("roots", [])
-                    if r.get("path")
-                    and Path(r["path"]).expanduser().resolve()
-                    == Path(path).expanduser().resolve()
-                ),
-                None,
-            )
-            return {
-                "granted": True,
-                "path": (primary or {}).get("path", path),
-                "writable": writable,
-            }
-
-        async def plan_approver(_args: dict, tool_call_id=None) -> dict:
-            # The engine has already emitted PLAN_PROPOSED. Park, await the verdict.
-            item = manager.inbox.add_plan(
-                session_id,
-                "Approve the plan?",
-                body=str(_args.get("plan", "")),
-                inbox=_route(),
-                visibility=_visibility(),
-                tool_call_id=tool_call_id,
-            )
-            if item.state == "pending":
-                manager.persist_session(session_id)
-                if item.visibility == VIS_INBOX:
-                    await _mirror(item)
-            resp = _parse_json(
-                await manager.inbox.wait(item.id)
-            )  # {approved, mode, feedback}
-            if not resp.get("approved"):
-                return {
-                    "approved": False,
-                    "feedback": resp.get("feedback") or "the user rejected the plan",
-                }
-            return {"approved": True, "mode": resp.get("mode") or "interactive"}
-
-        async def team_approver(_args: dict, tool_call_id=None) -> dict:
-            # The staffing gate. The engine already emitted TEAM_PROPOSED; park an
-            # Inbox item as the durable resolution vehicle, wait for the verdict, and
-            # on approval PRE-SPAWN the team (create_team fails closed on non-worker
-            # personas, so a bad roster reads as a rejection with the reason).
-            members = _args.get("members") or []
-            roster = "\n".join(
-                f"- {m.get('persona', '?')}"
-                + (f" · {m['model']}" if m.get("model") else "")
-                + (f" — {m['reason']}" if m.get("reason") else "")
-                for m in members
-                if isinstance(m, dict)
-            )
-            item = manager.inbox.add_plan(
-                session_id,
-                "Create this team?",
-                body=roster,
-                inbox=_route(),
-                visibility=_visibility(),
-                tool_call_id=tool_call_id,
-            )
-            if item.state == "pending":
-                manager.persist_session(session_id)
-                if item.visibility == VIS_INBOX:
-                    await _mirror(item)
-            resp = _parse_json(await manager.inbox.wait(item.id))
-            if not resp.get("approved"):
-                return {
-                    "approved": False,
-                    "feedback": resp.get("feedback") or "the user declined this roster",
-                }
-            # The gate checkbox is the USER's call: an explicit enable_chat in the
-            # response overrides whatever the lead proposed.
-            enable_chat = bool(
-                resp["enable_chat"]
-                if "enable_chat" in resp
-                else _args.get("enable_chat", False)
-            )
-            return manager.create_team(
-                session_id,
-                [m for m in members if isinstance(m, dict)],
-                enable_chat=enable_chat,
-            )
-
-        async def items_approver(_args: dict, tool_call_id=None) -> dict:
-            # The decomposition gate. TEAMS-flavored sibling of plan_approver:
-            # park a durable Inbox item, wait, and on approval create the items.
-            items = _args.get("items") or []
-            body = "\n".join(
-                f"- {i.get('title', '?')} — Done when: {i.get('criteria', '?')}"
-                for i in items
-                if isinstance(i, dict)
-            )
-            item = manager.inbox.add_plan(
-                session_id,
-                "Approve the proposed work items?",
-                body=body,
-                inbox=_route(),
-                visibility=_visibility(),
-                tool_call_id=tool_call_id,
-            )
-            if item.state == "pending":
-                manager.persist_session(session_id)
-                if item.visibility == VIS_INBOX:
-                    await _mirror(item)
-            resp = _parse_json(await manager.inbox.wait(item.id))
-            if not resp.get("approved"):
-                return {
-                    "approved": False,
-                    "feedback": resp.get("feedback") or "the user declined the split",
-                }
-            return manager.board_create_items(
-                session_id, [i for i in items if isinstance(i, dict)]
-            )
-
         async def _apply_model(model: Optional[str]) -> None:
             # Mid-session rebind is allowed (roadmap item 3, supersedes the 2026-07-04
             # lock): history is canonical and providers convert per call. A real switch
@@ -438,14 +114,14 @@ def build_ws_router(manager: SessionManager, api_token: str) -> APIRouter:
             session_id,
             workspace=workspace,
             agent=agent,
-            approver=approver,
+            approver=prompts.approval,
             extra_tools=mcp_tools,
-            directory_requester=directory_requester,
-            plan_approver=plan_approver,
-            question_asker=question_asker,
-            tool_requester=tool_requester,
-            team_approver=team_approver,
-            items_approver=items_approver,
+            directory_requester=prompts.directory,
+            plan_approver=prompts.plan,
+            question_asker=prompts.question,
+            tool_requester=prompts.tool_request,
+            team_approver=prompts.team,
+            items_approver=prompts.items,
         )
         if engine is None:
             await ws.send_json(
@@ -473,7 +149,7 @@ def build_ws_router(manager: SessionManager, api_token: str) -> APIRouter:
             )
         # Auto-compaction failure prompt (OPE-27): only an ATTENDED session may be asked
         # Retry/Trim — unattended runs auto-trim (the policy in engine._compact_now).
-        engine.is_attended = lambda: _visibility() == VIS_INLINE
+        engine.is_attended = lambda: prompts.visibility() == VIS_INLINE
         await ws.send_json(
             {
                 "type": "ready",
@@ -896,14 +572,3 @@ def build_ws_router(manager: SessionManager, api_token: str) -> APIRouter:
 
 
     return router
-
-
-def _parse_json(s: str) -> dict[str, Any]:
-    """Parse a structured Inbox resolution (directory/plan carry their reply as a JSON string)."""
-    try:
-        v = json.loads(s) if s else {}
-        return v if isinstance(v, dict) else {}
-    except Exception:
-        return {}
-
-
