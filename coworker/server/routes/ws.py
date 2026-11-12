@@ -17,7 +17,7 @@ from __future__ import annotations
 import asyncio
 import json
 from collections import deque
-from typing import Any
+from typing import Any, Awaitable, Callable
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
@@ -55,6 +55,317 @@ def _json_value_size(value: Any) -> int:
         return sum(_json_value_size(v) for v in value)
     return 8  # numbers, booleans, null, separators
 
+
+
+class _SessionSocket:
+    """Per-connection state the frame handlers may touch.
+
+    Deliberately narrow: a handler can talk to the session (steer, resolve, switch mode),
+    the turn runner, and the socket itself — nothing else. That narrowness is what made the
+    dispatch tableable: each handler reads on its own instead of sitting six levels deep in
+    a closure over `ws` / `session_id` / `engine`.
+    """
+
+    __slots__ = ("manager", "engine", "turns", "session_id", "workspace", "reject", "send")
+
+    def __init__(
+        self,
+        *,
+        manager: SessionManager,
+        engine: Any,
+        turns: TurnRunner,
+        session_id: str,
+        workspace: str | None,
+        reject: Callable[[str], Awaitable[None]],
+        send: Callable[[dict], Awaitable[None]],
+    ) -> None:
+        self.manager = manager
+        self.engine = engine
+        self.turns = turns
+        self.session_id = session_id
+        self.workspace = workspace
+        self.reject = reject
+        self.send = send
+
+
+async def _on_approval(sock: _SessionSocket, message: dict) -> None:
+    # Accept every vocabulary: the live card sends once/always_tool/always_command/
+    # always_task/deny; the Inbox / a channel send allow/always/deny. The manager owns
+    # the mapping.
+    sock.turns.resolve_pending(message.get("decision", "deny"))
+
+
+async def _on_directory_response(sock: _SessionSocket, message: dict) -> None:
+    sock.turns.resolve_pending(
+        json.dumps(
+            {
+                "granted": bool(message.get("granted")),
+                "path": message.get("path", ""),
+                "writable": bool(message.get("writable", False)),
+            }
+        )
+    )
+
+
+async def _on_tool_response(sock: _SessionSocket, message: dict) -> None:
+    sock.turns.resolve_pending(json.dumps({"approved": bool(message.get("approved"))}))
+
+
+async def _on_plan_response(sock: _SessionSocket, message: dict) -> None:
+    sock.turns.resolve_pending(
+        json.dumps(
+            {
+                "approved": bool(message.get("approved")),
+                "mode": message.get("mode", "interactive"),
+                "feedback": message.get("feedback", ""),
+            }
+        )
+    )
+
+
+async def _on_team_response(sock: _SessionSocket, message: dict) -> None:
+    # team_response and items_response carry the same verdict shape; both gates answer an
+    # Inbox plan item, so they share this handler.
+    sock.turns.resolve_pending(
+        json.dumps(
+            {
+                "approved": bool(message.get("approved")),
+                "feedback": message.get("feedback", ""),
+                **(
+                    {"enable_chat": bool(message.get("enable_chat"))}
+                    if "enable_chat" in message
+                    else {}
+                ),
+            }
+        )
+    )
+
+
+async def _on_question_response(sock: _SessionSocket, message: dict) -> None:
+    sock.turns.resolve_pending(str(message.get("answer", "")))
+
+
+async def _on_allow_anyway(sock: _SessionSocket, message: dict) -> None:
+    # §8.4: the user clicked "Allow anyway" on a reviewer-denied tool card. Registers a
+    # ONE-SHOT exact-action approval on the engine; the GUI then sends its canned retry
+    # message through the normal user_message path, and the re-proposed identical action
+    # runs without the reviewer/card.
+    name = message.get("name")
+    arguments = message.get("arguments")
+    if not isinstance(name, str) or not name:
+        await sock.reject("Invalid allow_anyway: missing tool name.")
+    elif arguments is not None and not isinstance(arguments, dict):
+        await sock.reject("Invalid allow_anyway: arguments must be an object.")
+    else:
+        sock.engine.approve_action_once(name, arguments or {})
+
+
+async def _on_interrupt(sock: _SessionSocket, message: dict) -> None:
+    sock.engine.request_interrupt()
+
+
+async def _on_retry(sock: _SessionSocket, message: dict) -> None:
+    # Re-run after a provider error (engine guards on the error-notice tail, so a stray
+    # frame is a no-op that still ends with turn_done).
+    await sock.turns.claim(retry=True)
+
+
+async def _on_set_mode(sock: _SessionSocket, message: dict) -> None:
+    try:
+        new_mode = Mode(message.get("mode"))
+    except (TypeError, ValueError):
+        return
+    engine = sock.engine
+    previous = engine.permissions.mode
+    engine.permissions.mode = new_mode
+    if previous is new_mode:
+        return
+    sock.manager.audit_autonomy_change(
+        sock.session_id, "mode", previous.value, new_mode.value
+    )
+    # The transcript records which mode each exchange ran under (owner ruling 2026-08-24):
+    # full explainer the first time a session enters Auto-Approve, a one-line marker
+    # otherwise. Server-authored + persisted, so reloads show it in place exactly once
+    # instead of re-announcing on every restart.
+    from coworker.permissions import AUTO_APPROVE_NOTICE, MODE_LABELS
+
+    if new_mode is Mode.AUTO_APPROVE and not any(
+        m.get("kind") == "mode_notice" for m in engine.messages
+    ):
+        engine._append_notice(
+            "mode_notice", AUTO_APPROVE_NOTICE, title="Auto-approve is on."
+        )
+        notice_data = {"title": "Auto-approve is on.", "text": AUTO_APPROVE_NOTICE}
+    else:
+        label = MODE_LABELS.get(new_mode.value, new_mode.value)
+        engine._append_notice("mode_switch", f"{label} is on.")
+        notice_data = {"text": f"{label} is on."}
+    # A mode switch with no accompanying message is bookkeeping, not activity (owner ruling
+    # 2026-08-24): the transcript records it, Recents doesn't reorder. The next real turn's
+    # checkpoint save bumps recency as usual.
+    sock.manager.save(sock.session_id, engine, touch=False)
+    await sock.manager.broadcast_session(
+        sock.session_id, {"type": "mode_notice", "data": notice_data}
+    )
+
+
+async def _on_set_model(sock: _SessionSocket, message: dict) -> None:
+    model = message.get("model")
+    if model is not None and not isinstance(model, str):
+        await sock.reject("Invalid model: expected a string.")
+    else:
+        await sock.turns.apply_model(model)
+
+
+def _ingress_problem(text: str, attachments: list) -> str | None:
+    """Why this user message must be refused before it becomes a turn, or None.
+
+    Pure on purpose: the caps are the socket's whole defence against buffering an
+    attacker-sized frame into model content, so they are worth reading (and testing)
+    without a live connection. The order of the checks is the order the user sees them.
+    """
+    if len(text) > MAX_MESSAGE_TEXT_CHARS:
+        return (
+            f"Message too long ({len(text)} chars; "
+            f"limit {MAX_MESSAGE_TEXT_CHARS})."
+        )
+    if len(attachments) > _MAX_ATTACHMENTS:
+        return (
+            f"Too many attachments ({len(attachments)}; "
+            f"limit {_MAX_ATTACHMENTS})."
+        )
+    if any(not isinstance(a, dict) for a in attachments):
+        return "Invalid attachment: expected an object."
+    if _json_value_size(attachments) > MAX_ATTACHMENTS_BYTES:
+        return "Attachments too large (limit 15 MB per message)."
+    for attachment in attachments:
+        attachment_kind = attachment.get("kind")
+        name = attachment.get("name")
+        mime = attachment.get("mime")
+        if attachment_kind not in {"image", "pdf", "text"}:
+            return "Invalid attachment kind."
+        if name is not None and (not isinstance(name, str) or len(name) > 1024):
+            return "Invalid attachment name."
+        if mime is not None and (not isinstance(mime, str) or len(mime) > 255):
+            return "Invalid attachment MIME type."
+        if attachment_kind == "image":
+            data = attachment.get("data_url")
+            if (
+                not isinstance(data, str)
+                or not data.startswith("data:image/")
+                or ";base64," not in data
+                or len(data) > MAX_IMAGE_CHARS
+            ):
+                return "Invalid or oversized image attachment."
+        elif attachment_kind == "pdf":
+            data = attachment.get("data_url")
+            if (
+                not isinstance(data, str)
+                or not data.startswith("data:application/pdf;base64,")
+                or len(data) > MAX_PDF_CHARS
+            ):
+                return "Invalid or oversized PDF attachment."
+        else:
+            body = attachment.get("text")
+            if not isinstance(body, str) or len(body) > MAX_TEXT_CHARS:
+                return "Invalid or oversized text attachment."
+    return None
+
+
+async def _on_user_message(sock: _SessionSocket, message: dict) -> None:
+    raw_text = message.get("text")
+    if raw_text is None:
+        raw_text = ""
+    if not isinstance(raw_text, str):
+        await sock.reject("Invalid message text: expected a string.")
+        return
+    text = raw_text.strip()
+    raw_attachments = message.get("attachments")
+    attachments = [] if raw_attachments is None else raw_attachments
+    if not isinstance(attachments, list):
+        await sock.reject("Invalid attachments: expected a list.")
+        return
+    problem = _ingress_problem(text, attachments)
+    if problem is not None:
+        await sock.reject(problem)
+        return
+    # Soft steering (P2-9): a text message sent while this session is running joins the
+    # live turn at its next model request instead of being rejected. Attachments/skills
+    # start a new turn, and a pending Inbox gate keeps its reply semantics (gate answers
+    # win).
+    if sock.manager.is_running(sock.session_id) and not sock.manager.inbox.pending(
+        sock.session_id
+    ):
+        if attachments:
+            await sock.reject(
+                "Mid-turn steering supports text only — wait for this "
+                "turn to finish before sending attachments."
+            )
+            return
+        if message.get("skill"):
+            await sock.reject(
+                "Mid-turn steering supports text only — a skill starts "
+                "a new turn."
+            )
+            return
+        if not text:
+            await sock.reject("Nothing to steer — the message is empty.")
+            return
+        if sock.manager.steer_session(sock.session_id, text):
+            await sock.send({"type": "steering_queued", "data": {"text": text}})
+            return
+    # The composer sends its visible model with every message — the FIRST one binds the
+    # session (race-proof across reconnects; see api.ts Session.userMessage), later ones
+    # may switch it (notice persisted).
+    model = message.get("model")
+    if model is not None and not isinstance(model, str):
+        await sock.reject("Invalid model: expected a string.")
+        return
+    # Force-run (SKILLS-SPEC §4.1 #3): the composer's `/skill` pick rides as a separate
+    # field. Validated against the session's effective menu — a muted or unknown skill is a
+    # visible error, never a silent no-op (§4.6 #15). The model-facing framing goes into
+    # `content`; the transcript shows the user's literal "/name …" line via the `_display`
+    # sidecar (one bubble).
+    skill = message.get("skill")
+    display = None
+    if skill is not None:
+        if not isinstance(skill, str) or not skill.strip():
+            await sock.reject("Invalid skill: expected a name.")
+            return
+        skill = skill.strip()
+        menu = sock.manager.effective_skill_names(sock.session_id, sock.workspace)
+        if skill not in menu:
+            await sock.reject(f"Skill '{skill}' is not available in this session.")
+            return
+        display = f"/{skill}" + (f" {text}" if text else "")
+        text = (
+            f'Use the skill "{skill}" for this request: first call '
+            f'load_skill("{skill}") and follow its instructions.'
+            + (f"\n\n{text}" if text else "")
+        )
+    await sock.turns.apply_model(model)
+    if text or attachments:
+        content = build_user_content(text, attachments)
+        await sock.turns.claim(content=content, display=display)
+
+
+# The inbound dispatch: frame type → handler. Adding a frame means adding one row here and
+# one case to tests/test_ws_frames.py; nothing else in the loop changes.
+FRAME_HANDLERS: dict[str, Callable[[_SessionSocket, dict], Awaitable[None]]] = {
+    "approval": _on_approval,
+    "directory_response": _on_directory_response,
+    "tool_response": _on_tool_response,
+    "plan_response": _on_plan_response,
+    "team_response": _on_team_response,
+    "items_response": _on_team_response,  # same verdict shape, same Inbox plan item
+    "question_response": _on_question_response,
+    "allow_anyway": _on_allow_anyway,
+    "interrupt": _on_interrupt,
+    "retry": _on_retry,
+    "set_mode": _on_set_mode,
+    "set_model": _on_set_model,
+    "user_message": _on_user_message,
+}
 
 
 def build_ws_router(manager: SessionManager, api_token: str) -> APIRouter:
@@ -189,6 +500,18 @@ def build_ws_router(manager: SessionManager, api_token: str) -> APIRouter:
         # broadcast, the checkpoint saves and the always-broadcast `turn_done`.
         turns = TurnRunner(manager, session_id, engine, reject=reject_input)
 
+        # One object carries what a frame handler may touch; the receive loop below
+        # dispatches through FRAME_HANDLERS instead of branching on the type.
+        sock = _SessionSocket(
+            manager=manager,
+            engine=engine,
+            turns=turns,
+            session_id=session_id,
+            workspace=workspace,
+            reject=reject_input,
+            send=ws.send_json,
+        )
+
         try:
             while True:
                 try:
@@ -216,265 +539,11 @@ def build_ws_router(manager: SessionManager, api_token: str) -> APIRouter:
                 if not isinstance(kind, str):
                     await reject_input("Invalid WebSocket message: missing string type.")
                     continue
-                if kind == "approval":
-                    turns.resolve_pending(message.get("decision", "deny"))
-                elif kind == "directory_response":
-                    turns.resolve_pending(
-                        json.dumps(
-                            {
-                                "granted": bool(message.get("granted")),
-                                "path": message.get("path", ""),
-                                "writable": bool(message.get("writable", False)),
-                            }
-                        )
-                    )
-                elif kind == "tool_response":
-                    turns.resolve_pending(
-                        json.dumps({"approved": bool(message.get("approved"))})
-                    )
-                elif kind == "plan_response":
-                    turns.resolve_pending(
-                        json.dumps(
-                            {
-                                "approved": bool(message.get("approved")),
-                                "mode": message.get("mode", "interactive"),
-                                "feedback": message.get("feedback", ""),
-                            }
-                        )
-                    )
-                elif kind in ("team_response", "items_response"):
-                    turns.resolve_pending(
-                        json.dumps(
-                            {
-                                "approved": bool(message.get("approved")),
-                                "feedback": message.get("feedback", ""),
-                                **(
-                                    {"enable_chat": bool(message.get("enable_chat"))}
-                                    if "enable_chat" in message
-                                    else {}
-                                ),
-                            }
-                        )
-                    )
-                elif kind == "question_response":
-                    turns.resolve_pending(str(message.get("answer", "")))
-                elif kind == "allow_anyway":
-                    # §8.4: the user clicked "Allow anyway" on a reviewer-denied tool card.
-                    # Registers a ONE-SHOT exact-action approval on the engine; the GUI then
-                    # sends its canned retry message through the normal user_message path,
-                    # and the re-proposed identical action runs without the reviewer/card.
-                    name = message.get("name")
-                    arguments = message.get("arguments")
-                    if not isinstance(name, str) or not name:
-                        await reject_input("Invalid allow_anyway: missing tool name.")
-                    elif arguments is not None and not isinstance(arguments, dict):
-                        await reject_input("Invalid allow_anyway: arguments must be an object.")
-                    else:
-                        engine.approve_action_once(name, arguments or {})
-                elif kind == "interrupt":
-                    engine.request_interrupt()
-                elif kind == "retry":
-                    # Re-run after a provider error (engine guards on the error-notice
-                    # tail, so a stray frame is a no-op that still ends with turn_done).
-                    await turns.claim(retry=True)
-                elif kind == "set_mode":
-                    try:
-                        new_mode = Mode(message.get("mode"))
-                    except (TypeError, ValueError):
-                        pass
-                    else:
-                        previous = engine.permissions.mode
-                        engine.permissions.mode = new_mode
-                        if previous is not new_mode:
-                            manager.audit_autonomy_change(
-                                session_id, "mode", previous.value, new_mode.value
-                            )
-                            # The transcript records which mode each exchange ran under
-                            # (owner ruling 2026-08-24): full explainer the first time a
-                            # session enters Auto-Approve, a one-line marker otherwise.
-                            # Server-authored + persisted, so reloads show it in place
-                            # exactly once instead of re-announcing on every restart.
-                            from coworker.permissions import (
-                                AUTO_APPROVE_NOTICE,
-                                MODE_LABELS,
-                            )
-
-                            if new_mode is Mode.AUTO_APPROVE and not any(
-                                m.get("kind") == "mode_notice"
-                                for m in engine.messages
-                            ):
-                                engine._append_notice(
-                                    "mode_notice",
-                                    AUTO_APPROVE_NOTICE,
-                                    title="Auto-approve is on.",
-                                )
-                                notice_data = {
-                                    "title": "Auto-approve is on.",
-                                    "text": AUTO_APPROVE_NOTICE,
-                                }
-                            else:
-                                label = MODE_LABELS.get(
-                                    new_mode.value, new_mode.value
-                                )
-                                engine._append_notice(
-                                    "mode_switch", f"{label} is on."
-                                )
-                                notice_data = {"text": f"{label} is on."}
-                            # A mode switch with no accompanying message is bookkeeping,
-                            # not activity (owner ruling 2026-08-24): the transcript
-                            # records it, Recents doesn't reorder. The next real turn's
-                            # checkpoint save bumps recency as usual.
-                            manager.save(session_id, engine, touch=False)
-                            await manager.broadcast_session(
-                                session_id,
-                                {"type": "mode_notice", "data": notice_data},
-                            )
-                elif kind == "set_model":
-                    model = message.get("model")
-                    if model is not None and not isinstance(model, str):
-                        await reject_input("Invalid model: expected a string.")
-                    else:
-                        await turns.apply_model(model)
-                elif kind == "user_message":
-                    raw_text = message.get("text")
-                    if raw_text is None:
-                        raw_text = ""
-                    if not isinstance(raw_text, str):
-                        await reject_input("Invalid message text: expected a string.")
-                        continue
-                    text = raw_text.strip()
-                    raw_attachments = message.get("attachments")
-                    attachments = [] if raw_attachments is None else raw_attachments
-                    # Reject an oversized frame instead of buffering it into a turn. Send a
-                    # visible error so the surface can tell the user, and drop the message.
-                    if not isinstance(attachments, list):
-                        await reject_input("Invalid attachments: expected a list.")
-                        continue
-                    reject = None
-                    if len(text) > MAX_MESSAGE_TEXT_CHARS:
-                        reject = (
-                            f"Message too long ({len(text)} chars; "
-                            f"limit {MAX_MESSAGE_TEXT_CHARS})."
-                        )
-                    elif len(attachments) > _MAX_ATTACHMENTS:
-                        reject = (
-                            f"Too many attachments ({len(attachments)}; "
-                            f"limit {_MAX_ATTACHMENTS})."
-                        )
-                    elif any(not isinstance(a, dict) for a in attachments):
-                        reject = "Invalid attachment: expected an object."
-                    elif _json_value_size(attachments) > MAX_ATTACHMENTS_BYTES:
-                        reject = "Attachments too large (limit 15 MB per message)."
-                    else:
-                        for attachment in attachments:
-                            attachment_kind = attachment.get("kind")
-                            name = attachment.get("name")
-                            mime = attachment.get("mime")
-                            if attachment_kind not in {"image", "pdf", "text"}:
-                                reject = "Invalid attachment kind."
-                            elif name is not None and (
-                                not isinstance(name, str) or len(name) > 1024
-                            ):
-                                reject = "Invalid attachment name."
-                            elif mime is not None and (
-                                not isinstance(mime, str) or len(mime) > 255
-                            ):
-                                reject = "Invalid attachment MIME type."
-                            elif attachment_kind == "image":
-                                data = attachment.get("data_url")
-                                if (
-                                    not isinstance(data, str)
-                                    or not data.startswith("data:image/")
-                                    or ";base64," not in data
-                                    or len(data) > MAX_IMAGE_CHARS
-                                ):
-                                    reject = "Invalid or oversized image attachment."
-                            elif attachment_kind == "pdf":
-                                data = attachment.get("data_url")
-                                if (
-                                    not isinstance(data, str)
-                                    or not data.startswith(
-                                        "data:application/pdf;base64,"
-                                    )
-                                    or len(data) > MAX_PDF_CHARS
-                                ):
-                                    reject = "Invalid or oversized PDF attachment."
-                            else:
-                                body = attachment.get("text")
-                                if (
-                                    not isinstance(body, str)
-                                    or len(body) > MAX_TEXT_CHARS
-                                ):
-                                    reject = "Invalid or oversized text attachment."
-                            if reject is not None:
-                                break
-                    if reject is not None:
-                        await reject_input(reject)
-                        continue
-                    # Soft steering (P2-9): a text message sent while this session is
-                    # running joins the live turn at its next model request instead of
-                    # being rejected. Attachments/skills start a new turn, and a pending
-                    # Inbox gate keeps its reply semantics (gate answers win).
-                    if manager.is_running(
-                        session_id
-                    ) and not manager.inbox.pending(session_id):
-                        if attachments:
-                            await reject_input(
-                                "Mid-turn steering supports text only — wait for this "
-                                "turn to finish before sending attachments."
-                            )
-                            continue
-                        if message.get("skill"):
-                            await reject_input(
-                                "Mid-turn steering supports text only — a skill starts "
-                                "a new turn."
-                            )
-                            continue
-                        if not text:
-                            await reject_input("Nothing to steer — the message is empty.")
-                            continue
-                        if manager.steer_session(session_id, text):
-                            await ws.send_json(
-                                {"type": "steering_queued", "data": {"text": text}}
-                            )
-                            continue
-                    # The composer sends its visible model with every message — the FIRST
-                    # one binds the session (race-proof across reconnects; see api.ts
-                    # Session.userMessage), later ones may switch it (notice persisted).
-                    model = message.get("model")
-                    if model is not None and not isinstance(model, str):
-                        await reject_input("Invalid model: expected a string.")
-                        continue
-                    # Force-run (SKILLS-SPEC §4.1 #3): the composer's `/skill` pick rides as a
-                    # separate field. Validated against the session's effective menu — a muted
-                    # or unknown skill is a visible error, never a silent no-op (§4.6 #15).
-                    # The model-facing framing goes into `content`; the transcript shows the
-                    # user's literal "/name …" line via the `_display` sidecar (one bubble).
-                    skill = message.get("skill")
-                    display = None
-                    if skill is not None:
-                        if not isinstance(skill, str) or not skill.strip():
-                            await reject_input("Invalid skill: expected a name.")
-                            continue
-                        skill = skill.strip()
-                        menu = manager.effective_skill_names(session_id, workspace)
-                        if skill not in menu:
-                            await reject_input(
-                                f"Skill '{skill}' is not available in this session."
-                            )
-                            continue
-                        display = f"/{skill}" + (f" {text}" if text else "")
-                        text = (
-                            f'Use the skill "{skill}" for this request: first call '
-                            f'load_skill("{skill}") and follow its instructions.'
-                            + (f"\n\n{text}" if text else "")
-                        )
-                    await turns.apply_model(model)
-                    if text or attachments:
-                        content = build_user_content(text, attachments)
-                        await turns.claim(content=content, display=display)
-                else:
+                handler = FRAME_HANDLERS.get(kind)
+                if handler is None:
                     await reject_input(f"Unknown WebSocket message type: {kind}.")
+                else:
+                    await handler(sock, message)
         except WebSocketDisconnect:
             pass
         finally:
