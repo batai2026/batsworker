@@ -187,3 +187,7 @@ _GEN_ACCOUNT_PROP = {
     "type": "string",
     "description": "Which connected account to use (default account when empty)",
 }
+
+
+def _clamp(n: Any, default: int = 10, ceiling: int = 20) -> int:
+    return max(1, min(int(n or default), ceiling))

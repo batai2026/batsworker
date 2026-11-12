@@ -463,7 +463,11 @@ def test_managed_401_reminted_once(tmp_path, monkeypatch):
         lambda s, c, iid, *, force=False: minted.append(force) or "ghs_x",
     )
     responses = iter([{"error": "HTTP 401"}, {"ok": True, "data": {}}])
-    monkeypatch.setattr(integration_tools, "_request", lambda *a, **k: next(responses))
+    import coworker.connectors.toolkit as toolkit
+
+    fake_request = lambda *a, **k: next(responses)  # noqa: E731 - one-liner fake
+    monkeypatch.setattr(integration_tools, "_request", fake_request)
+    monkeypatch.setattr(toolkit, "_request", fake_request)
 
     out = _tool(secrets, "github_review")("acme", "site", 5, "APPROVE")
     assert out["ok"] is True

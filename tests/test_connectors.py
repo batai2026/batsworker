@@ -1539,9 +1539,7 @@ def test_gitlab_self_hosted_base_url(tmp_path, monkeypatch):
         {"token": "t", "base_url": "https://git.example.com/", "enabled": True},
     )
     calls = []
-    monkeypatch.setattr(
-        it, "_request", lambda m, url, **kw: calls.append(url) or {"ok": True}
-    )
+    _patch_request(monkeypatch, lambda m, url, **kw: calls.append(url) or {"ok": True})
     tools = {t.__name__: t for t in it.make_integration_tools(secrets)}
     tools["gitlab_search"]("q")
     assert calls[0] == "https://git.example.com/api/v4/search"
@@ -1556,9 +1554,7 @@ def test_quickbooks_sandbox_environment(tmp_path, monkeypatch):
         {"access_token": "t", "realm_id": "r1", "environment": "sandbox"},
     )
     calls = []
-    monkeypatch.setattr(
-        it, "_request", lambda m, url, **kw: calls.append(url) or {"ok": True}
-    )
+    _patch_request(monkeypatch, lambda m, url, **kw: calls.append(url) or {"ok": True})
     tools = {t.__name__: t for t in it.make_integration_tools(secrets)}
     tools["quickbooks_list_customers"]()
     assert calls[0] == "https://sandbox-quickbooks.api.intuit.com/v3/company/r1/query"
