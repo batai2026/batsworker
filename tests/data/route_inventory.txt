@@ -158,11 +158,6 @@ POST	/v1/connectors/{name}/accounts/{account_id}/disconnect	account_disconnect
 POST	/v1/connectors/{name}/accounts/{account_id}/default	account_default
 PATCH	/v1/connectors/hubspot/hidden-fields	hubspot_hidden_fields
 POST	/v1/connectors/{name}/unauthorized/{item_id}	connector_unauthorized_resolve
-GET	/v1/cloud/status	cloud_status
-POST	/v1/cloud/telemetry	cloud_telemetry
-POST	/v1/cloud/login	cloud_login
-POST	/v1/cloud/logout	cloud_logout
-GET	/auth/callback	cloud_auth_callback
 POST	/v1/connectors/{name}/connect-managed	connector_connect_managed
 POST	/oauth/callback	managed_oauth_callback
 PATCH	/v1/connectors/{name}/tools	connector_tools_patch
@@ -172,6 +167,11 @@ GET	/v1/connectors/slack/workspaces/{team_id}/channels	slack_channels
 POST	/v1/connectors/{name}/disallow	connector_disallow
 POST	/v1/connectors/slack/approval-owners/add	slack_approval_owner_add
 POST	/v1/connectors/slack/approval-owners/remove	slack_approval_owner_remove
+GET	/v1/cloud/status	cloud_status
+POST	/v1/cloud/telemetry	cloud_telemetry
+POST	/v1/cloud/login	cloud_login
+POST	/v1/cloud/logout	cloud_logout
+GET	/auth/callback	cloud_auth_callback
 GET	/v1/audit	audit_list
 GET	/v1/plugins/audit	plugin_audit_list
 GET	/v1/browser/state	browser_state_get
