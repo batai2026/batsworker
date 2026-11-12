@@ -34,8 +34,22 @@ BASELINE = Path(__file__).parent / "data" / "route_inventory.txt"
 
 def _route_lines(app) -> list[str]:
     """`METHODS<TAB>PATH<TAB>NAME` for every registered route, in registration order."""
+    return _walk(app.router.routes, "")
+
+
+def _walk(routes, prefix: str) -> list[str]:
     lines: list[str] = []
-    for route in app.router.routes:
+    for route in routes:
+        # FastAPI (0.14x) keeps an `include_router(...)` call as one `_IncludedRouter`
+        # entry holding the child router instead of splicing its routes in place. Descend,
+        # carrying the include prefix, so the table stays the flat list FastAPI matches
+        # against — and so `include_router` order is compared exactly like decorator order.
+        include_context = getattr(route, "include_context", None)
+        if include_context is not None:
+            lines.extend(
+                _walk(route.original_router.routes, prefix + include_context.prefix)
+            )
+            continue
         methods = getattr(route, "methods", None)
         if isinstance(route, WebSocketRoute):
             method_label = "WEBSOCKET"
@@ -44,7 +58,7 @@ def _route_lines(app) -> list[str]:
             method_label = ",".join(sorted(set(methods) - {"HEAD"}))
         else:
             method_label = "-"  # the bare openapi/docs routes carry no methods of their own
-        lines.append(f"{method_label}\t{route.path}\t{route.name}")
+        lines.append(f"{method_label}\t{prefix + route.path}\t{route.name}")
     return lines
 
 

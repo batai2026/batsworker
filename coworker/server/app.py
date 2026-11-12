@@ -78,91 +78,6 @@ def _json_value_size(value: Any) -> int:
     return 8  # numbers, booleans, null, separators
 
 
-# Brand colors for the connector badge riding the ✓ (UX-DECISIONS §30). The GUI owns the
-# real logos; this page must render offline with zero assets, so a colored initial stands in.
-_BRAND_COLORS = {
-    "slack": "#4A154B",
-    "github": "#24292f",
-    "hubspot": "#ff7a59",
-    "gmail": "#ea4335",
-    "google_calendar": "#4285f4",
-}
-
-
-def _browser_page(
-    title: str, detail: str, *, ok: bool = True, error: str = "", connector: str = ""
-) -> str:
-    """The page shown in the user's browser at the end of a loopback flow (sign-in or
-    connector callback) — one branded card (UX-DECISIONS §30): OCW mark, ok/fail icon
-    (the connector's initial rides the ✓), the friendly detail, and the raw error
-    preserved on failures (it's the debugging breadcrumb). Inline CSS, light/dark via
-    prefers-color-scheme, no external assets — it must render offline."""
-    import html as _html
-
-    badge = ""
-    if ok and connector:
-        color = _BRAND_COLORS.get(connector, "#3670b2")
-        initial = _html.escape((connector[:1] or "?").upper())
-        badge = f'<span class="mini" style="background:{color}">{initial}</span>'
-    icon = (
-        f'<div class="ico ok">✓{badge}</div>' if ok else '<div class="ico bad">✕</div>'
-    )
-    err = f'<div class="err">{_html.escape(error)}</div>' if error else ""
-    return (
-        "<!doctype html><html><head><meta charset='utf-8'>"
-        "<meta name='viewport' content='width=device-width, initial-scale=1'>"
-        f"<title>{_html.escape(title)} — OpenWorker</title><style>"
-        ":root{--paper:#f6f5f2;--panel:#fff;--line:#e4e2dc;--ink:#2c2c2a;--muted:#6f6e68;"
-        "--faint:#a3a19a;--accent:#3670b2;--ok:#2e7d4f;--ok-soft:#e3f2e9;--bad:#b3423a;"
-        "--bad-soft:#f8e7e5}"
-        "@media(prefers-color-scheme:dark){:root{--paper:#191918;--panel:#232322;"
-        "--line:#373633;--ink:#e8e6e1;--muted:#9d9b94;--faint:#6b6a64;--accent:#6ba3dd;"
-        "--ok:#5cb884;--ok-soft:#20362a;--bad:#d97b74;--bad-soft:#3a2422}}"
-        "body{margin:0;min-height:100vh;display:flex;flex-direction:column;align-items:center;"
-        "justify-content:center;gap:18px;background:var(--paper);color:var(--ink);"
-        'font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;padding:24px}'
-        ".card{background:var(--panel);border:1px solid var(--line);border-radius:16px;"
-        "padding:34px 32px 28px;max-width:320px;width:100%;text-align:center;"
-        "box-shadow:0 10px 30px rgba(0,0,0,.06);box-sizing:border-box}"
-        ".mark{display:flex;align-items:center;justify-content:center;gap:7px;margin-bottom:22px;"
-        "font-size:13px;font-weight:650}"
-        ".mark i{width:20px;height:20px;border-radius:6px;background:var(--accent);"
-        "display:inline-block;position:relative}"
-        ".mark i::after{content:'';position:absolute;inset:5px;border-radius:2px;"
-        "background:conic-gradient(from 0deg,#fff 0 25%,transparent 0 50%,#fff 0 75%,transparent 0)}"
-        ".ico{width:52px;height:52px;border-radius:50%;margin:0 auto 14px;display:flex;"
-        "align-items:center;justify-content:center;font-size:24px;position:relative}"
-        ".ico.ok{background:var(--ok-soft);color:var(--ok)}"
-        ".ico.bad{background:var(--bad-soft);color:var(--bad)}"
-        ".mini{position:absolute;right:-3px;bottom:-3px;width:22px;height:22px;border-radius:7px;"
-        "display:flex;align-items:center;justify-content:center;color:#fff;font-size:10px;"
-        "font-weight:700;border:2px solid var(--panel)}"
-        "h1{font-size:17px;font-weight:650;margin:0 0 6px;letter-spacing:-.01em}"
-        "p{font-size:12.5px;color:var(--muted);margin:0}"
-        ".err{font-size:11.5px;color:var(--bad);background:var(--bad-soft);border-radius:8px;"
-        "padding:7px 10px;margin-top:12px;text-align:left;word-break:break-word}"
-        ".foot{font-size:10.5px;color:var(--faint)}"
-        "</style></head><body>"
-        '<div class="card"><div class="mark"><i></i>OpenWorker</div>'
-        f"{icon}<h1>{_html.escape(title)}</h1><p>{_html.escape(detail)}</p>{err}</div>"
-        '<div class="foot">Served locally by OpenWorker on your Mac</div>'
-        "</body></html>"
-    )
-
-
-def _connector_title(name: str) -> str:
-    """Display name for the loopback page — 'Slack connected', never 'slack connected'."""
-    from ..connectors.descriptors import get_descriptor
-
-    d = get_descriptor(name)
-    return d.title if d else (name[:1].upper() + name[1:])
-
-
-_CONNECT_FAILED_DETAIL = (
-    "Something went wrong finishing this connection. "
-    "Close this tab and try again from OpenWorker."
-)
-
 from ..attachments import (
     MAX_ATTACHMENTS as _MAX_ATTACHMENTS,
     MAX_IMAGE_CHARS,
@@ -178,6 +93,17 @@ from .. import toolchain
 from ..teams.model import AuthorityError as TeamsAuthorityError
 from ..teams.model import BoardError as TeamsBoardError
 from .manager import SessionManager
+from .pages import _CONNECT_FAILED_DETAIL, _browser_page, _connector_title
+from .routes.attachments_messaging import build_attachments_messaging_router
+from .routes.automations import build_automations_router
+from .routes.mcp import build_mcp_router
+from .routes.memory import build_memory_router
+from .routes.observability import build_observability_router
+from .routes.plugins import build_plugins_router
+from .routes.providers import build_providers_router
+from .routes.security import build_security_router
+from .routes.settings import build_settings_router
+from .routes.skills import build_skills_router
 
 
 def create_app(manager: SessionManager) -> FastAPI:
@@ -687,78 +613,11 @@ def create_app(manager: SessionManager) -> FastAPI:
             persona_id, connector, bool(body.get("enabled", False))
         )
 
-    @app.get("/v1/skills")
-    def skills(workspace: str = "") -> dict[str, Any]:
-        return {"skills": manager.list_skills(workspace or None)}
-
-    @app.post("/v1/skills")
-    def create_skill(body: dict) -> dict[str, Any]:
-        return manager.create_skill(body or {})
-
-    @app.patch("/v1/skills/{name}")
-    def update_skill(name: str, body: dict) -> dict[str, Any]:
-        return manager.update_skill(name, body or {})
-
-    @app.delete("/v1/skills/{name}")
-    def delete_skill(name: str, workspace: str = "") -> dict[str, Any]:
-        return manager.delete_skill(name, workspace or None)
-
-    @app.post("/v1/skills/{name}/move")
-    def move_skill(name: str, body: dict) -> dict[str, Any]:
-        return manager.move_skill(name, body or {})
-
-    @app.post("/v1/skills/{name}/reveal")
-    def reveal_skill(name: str, body: dict) -> dict[str, Any]:
-        # §6 "Show folder": open the skill's folder in the OS file manager (local machine).
-        return manager.reveal_skill(name, str((body or {}).get("workspace", "")) or None)
-
-    @app.post("/v1/skills/upload")
-    def stage_skill_upload(body: dict) -> dict[str, Any]:
-        # Stage → preview; nothing is installed until /upload/confirm (SKILLS-SPEC §4.2).
-        data_b64 = str((body or {}).get("data_b64", ""))
-        if not data_b64:
-            return {"ok": False, "error": "No archive supplied."}
-        try:
-            data = base64.b64decode(data_b64, validate=True)
-        except (ValueError, binascii.Error):
-            return {"ok": False, "error": "Invalid archive encoding."}
-        return manager.stage_skill_upload(data, str((body or {}).get("filename", "")))
-
-    @app.post("/v1/skills/upload/confirm")
-    def confirm_skill_upload(body: dict) -> dict[str, Any]:
-        return manager.confirm_skill_upload(body or {})
-
-    @app.post("/v1/skills/demo")
-    def stage_demo_skill(body: dict) -> dict[str, Any]:
-        """Stage a skill generated from a pasted/recorded demonstration.
-
-        Body: ``name``, ``description``, and either ``steps`` (list of step
-        strings) or ``recording`` (a saved browser replay name). The generated
-        SKILL.md is staged — the user reviews it and confirms via
-        ``POST /v1/skills/upload/confirm`` before anything is installed.
-        """
-        return manager.stage_demo_skill(body or {})
+    # -- skills ----------------------------------------------------------------
+    app.include_router(build_skills_router(manager))
 
     # -- Creator 面（P1-4）：能力槽与插件 dry-run 预览 ---------------------------------
-    @app.get("/v1/plugins/slots")
-    def plugin_slots() -> dict[str, Any]:
-        return manager.plugin_slots()
-
-    @app.post("/v1/plugins/preview")
-    def preview_plugin(body: dict) -> Any:
-        # 只读：解析 bundle 并返回统一 consent 摘要，绝不安装。
-        body = body or {}
-        result = manager.preview_plugin(
-            str(body.get("kind", "")),
-            source=body.get("source") or None,
-            name=body.get("name") or None,
-        )
-        if not result.get("ok"):
-            return JSONResponse(
-                {"error": result.get("error", "preview failed")},
-                status_code=int(result.get("status") or 400),
-            )
-        return result
+    app.include_router(build_plugins_router(manager))
 
     @app.get("/v1/workspaces/recent")
     def recent_workspaces() -> dict[str, Any]:
@@ -1268,132 +1127,11 @@ def create_app(manager: SessionManager) -> FastAPI:
             ),
         )
 
-    @app.get("/v1/memory")
-    def memory() -> dict[str, Any]:
-        return {"memory": manager.list_memory()}
+    # -- memory -----------------------------------------------------------------
+    app.include_router(build_memory_router(manager))
 
-    @app.post("/v1/memory")
-    def add_memory(body: dict) -> dict[str, Any]:
-        body = body or {}
-        return manager.add_memory(
-            str(body.get("content", "")), str(body.get("scope", "workspace"))
-        )
-
-    # Declared before the /{item_id} routes so "settings" can never be parsed as an id.
-    @app.get("/v1/memory/settings")
-    def memory_settings() -> dict[str, Any]:
-        return manager.get_memory_settings()
-
-    @app.put("/v1/memory/settings")
-    def memory_settings_put(body: dict) -> dict[str, Any]:
-        body = body or {}
-        return manager.set_memory_settings(
-            enabled=bool(body["enabled"]) if "enabled" in body else None,
-            user_rules=str(body["user_rules"]) if "user_rules" in body else None,
-        )
-
-    @app.patch("/v1/memory/{item_id}")
-    def memory_patch(item_id: int, body: dict) -> dict[str, Any]:
-        return manager.update_memory(item_id, str((body or {}).get("content", "")))
-
-    @app.delete("/v1/memory/{item_id}")
-    def memory_delete(item_id: int) -> dict[str, Any]:
-        return manager.delete_memory(item_id)
-
-    @app.delete("/v1/memory")
-    def memory_delete_all() -> dict[str, Any]:
-        return manager.delete_all_memory()
-
-    @app.post("/v1/memory/export")
-    def memory_export(body: dict) -> dict[str, Any]:
-        """Write the memory store as an editable MEMORY.md (plain-text memory)."""
-        return manager.export_memory(str((body or {}).get("workspace", "")) or None)
-
-    @app.post("/v1/memory/import")
-    def memory_import(body: dict) -> dict[str, Any]:
-        """Re-import the edited MEMORY.md — the file becomes the source of truth."""
-        return manager.import_memory(str((body or {}).get("workspace", "")) or None)
-
-    @app.post("/v1/memory/reveal")
-    def memory_reveal(body: dict) -> dict[str, Any]:
-        """Open the folder containing MEMORY.md in the OS file manager."""
-        return manager.reveal_memory(str((body or {}).get("workspace", "")) or None)
-
-    # -- security workflow (editable threat model + finding closure loop) ---------
-    @app.get("/v1/security/threat-model")
-    def threat_model_get() -> dict[str, Any]:
-        return manager.get_threat_model()
-
-    @app.put("/v1/security/threat-model")
-    def threat_model_put(body: dict) -> dict[str, Any]:
-        return manager.save_threat_model(str((body or {}).get("content", "")))
-
-    @app.post("/v1/security/threat-model/reveal")
-    def threat_model_reveal() -> dict[str, Any]:
-        return manager.reveal_threat_model()
-
-    @app.get("/v1/security/findings")
-    def security_findings_list(status: str = "") -> dict[str, Any]:
-        return manager.list_security_findings(status)
-
-    @app.post("/v1/security/findings")
-    def security_findings_add(body: dict) -> dict[str, Any]:
-        return manager.add_security_finding(body or {})
-
-    @app.patch("/v1/security/findings/{finding_id}")
-    def security_finding_patch(finding_id: str, body: dict) -> dict[str, Any]:
-        return manager.update_security_finding(finding_id, body or {})
-
-    @app.delete("/v1/security/findings/{finding_id}")
-    def security_finding_delete(finding_id: str) -> dict[str, Any]:
-        return manager.delete_security_finding(finding_id)
-
-    # -- egress policy (P0: persistent network allowlist + request_egress tool) --
-    @app.get("/v1/egress/policy")
-    def egress_policy_get() -> dict[str, Any]:
-        from ..egress import default_policy
-
-        return {"ok": True, "domains": default_policy().list_domains()}
-
-    @app.post("/v1/egress/policy")
-    def egress_policy_add(body: dict) -> dict[str, Any]:
-        from ..egress import default_policy
-
-        domain = str((body or {}).get("domain", ""))
-        reason = str((body or {}).get("reason", ""))
-        if not default_policy().add_domain(domain, reason):
-            return {"ok": False, "error": "invalid domain"}
-        return {"ok": True, "domain": domain}
-
-    @app.delete("/v1/egress/policy/{domain}")
-    def egress_policy_delete(domain: str) -> dict[str, Any]:
-        from ..egress import default_policy
-
-        return {"ok": default_policy().remove_domain(domain), "domain": domain}
-
-    # -- GUI sandbox toggle ---------------------------------------------------------
-    @app.get("/v1/settings/sandbox")
-    def sandbox_settings_get() -> dict[str, Any]:
-        return manager.get_sandbox_settings()
-
-    @app.put("/v1/settings/sandbox")
-    def sandbox_settings_put(body: dict) -> dict[str, Any]:
-        return manager.set_sandbox_settings(body or {})
-
-    # -- OpenShell status (P0: desktop/settings check for the openshell backend) --
-    @app.get("/v1/settings/openshell/status")
-    def openshell_status_get() -> dict[str, Any]:
-        from ..config import load_config
-        from ..tools.openshell import _parse_prefix, openshell_available
-
-        cfg = load_config()
-        prefix = _parse_prefix(cfg.sandbox_openshell_prefix)
-        return {
-            "ok": True,
-            "available": openshell_available(),
-            "prefix": prefix,
-            "backend": cfg.sandbox_backend,
-        }
+    # -- security posture (threat model, findings, egress, sandbox) --------------
+    app.include_router(build_security_router(manager))
 
     # -- project bindings (pass 20 / UX-044) --------------------------------------
 
@@ -1425,91 +1163,7 @@ def create_app(manager: SessionManager) -> FastAPI:
         return _openai_response(model, turn)
 
     # -- MCP servers ------------------------------------------------------------
-    @app.get("/v1/mcp")
-    def mcp_list() -> dict[str, Any]:
-        return {"servers": manager.list_mcp()}
-
-    @app.post("/v1/mcp")
-    def mcp_add(body: dict) -> dict[str, Any]:
-        name = body.get("name")
-        config = body.get("config")
-        if not name or not isinstance(config, dict):
-            return {"ok": False, "error": "name and config required"}
-        return manager.add_mcp(name, config)
-
-    @app.patch("/v1/mcp/{name}")
-    def mcp_patch(name: str, body: dict) -> Any:
-        body = dict(body or {})
-        # consent v2: a permission widening needs an explicit re-consent; `confirm`
-        # is a request control, never persisted into mcp.json.
-        confirm = bool(body.pop("confirm", False))
-        result = manager.patch_mcp(name, body, confirm=confirm)
-        if result.get("status"):
-            return JSONResponse(result, status_code=result["status"])
-        return result
-
-    @app.delete("/v1/mcp/{name}")
-    def mcp_delete(name: str) -> dict[str, Any]:
-        return manager.delete_mcp(name)
-
-    @app.get("/v1/mcp/{name}/tools")
-    async def mcp_tools(name: str) -> dict[str, Any]:
-        return await manager.mcp_tools(name)
-
-    @app.post("/v1/mcp/{name}/connect")
-    async def mcp_connect(name: str) -> dict[str, Any]:
-        # Connect now. For `auth: oauth` servers the first connect opens the system
-        # browser and waits on the loopback callback — that can take minutes, so it
-        # runs as a background task; the GUI polls /v1/mcp for the status flip
-        # (authorizing → connected | needs_auth + last_error).
-        manager.begin_mcp_connect(name)  # authorizing shows on the very next poll
-        asyncio.create_task(manager.connect_mcp(name))
-        return {"ok": True, "started": True}
-
-    @app.post("/v1/mcp/{name}/signout")
-    async def mcp_signout(name: str) -> dict[str, Any]:
-        return await manager.signout_mcp(name)
-
-    @app.get("/mcp/oauth/callback")
-    async def mcp_oauth_callback(
-        code: str = "", state: str = "", error: str = ""
-    ) -> Any:
-        # Loopback landing for the MCP OAuth browser flow (mcp/oauth.py). Browser-facing:
-        # returns the same styled page as the managed-connector callbacks.
-        from fastapi.responses import HTMLResponse
-
-        from ..mcp import oauth as mcp_oauth
-
-        if error:
-            return HTMLResponse(
-                _browser_page(
-                    "Sign-in failed",
-                    "The service reported an error. Return to OpenWorker and try again.",
-                    ok=False,
-                    error=error,
-                ),
-                status_code=400,
-            )
-        if not code or not mcp_oauth.deliver_callback(code, state or None):
-            return HTMLResponse(
-                _browser_page(
-                    "Nothing waiting for this sign-in",
-                    "The sign-in may have timed out. Return to OpenWorker and start it again.",
-                    ok=False,
-                ),
-                status_code=400,
-            )
-        return HTMLResponse(
-            _browser_page(
-                "Connected",
-                "Sign-in complete. You can close this tab and return to OpenWorker.",
-                ok=True,
-            )
-        )
-
-    @app.post("/v1/mcp/reload")
-    async def mcp_reload() -> dict[str, Any]:
-        return await manager.reload_mcp()
+    app.include_router(build_mcp_router(manager))
 
     # -- connectors (Slack / Telegram / …) --------------------------------------
     @app.get("/v1/connectors")
@@ -2048,271 +1702,19 @@ def create_app(manager: SessionManager) -> FastAPI:
         )
 
     # -- audit / browser observability ------------------------------------------
-    @app.get("/v1/audit")
-    def audit_list(
-        limit: int = 100,
-        session_id: str | None = None,
-        connector: str | None = None,
-        tool: str | None = None,
-    ) -> dict[str, Any]:
-        return {
-            "events": manager.list_audit(
-                limit=limit, session_id=session_id, connector=connector, tool=tool
-            )
-        }
-
-    @app.get("/v1/plugins/audit")
-    def plugin_audit_list(limit: int = 100, id: str | None = None) -> dict[str, Any]:
-        """P2-10: install/uninstall/permission-change ledger (newest first)."""
-        from ..plugins import consent_audit
-
-        return {"events": consent_audit.read(limit=limit, id=id)}
-
-    @app.get("/v1/browser/state")
-    def browser_state_get() -> dict[str, Any]:
-        return manager.browser_state()
-
-    @app.post("/v1/browser/screenshot")
-    def browser_screenshot_post() -> dict[str, Any]:
-        return manager.browser_screenshot()
-
-    @app.post("/v1/browser/close")
-    def browser_close_post() -> dict[str, Any]:
-        return manager.browser_close()
-
-    @app.get("/v1/browser/recordings")
-    def browser_recordings_get() -> dict[str, Any]:
-        """Saved browser replay scripts (the demo→skill door's recording source)."""
-        return manager.browser_recordings()
-
-    # -- web search -------------------------------------------------------------
-    @app.get("/v1/web-search")
-    def web_search_get() -> dict[str, Any]:
-        return manager.get_web_search()
-
-    @app.post("/v1/web-search")
-    def web_search_set(body: dict) -> dict[str, Any]:
-        provider = (body or {}).get("provider", "")
-        if not provider:
-            return {"ok": False, "error": "provider required"}
-        return manager.set_web_search(provider, (body or {}).get("api_key"))
+    app.include_router(build_observability_router(manager))
 
     # -- model providers (OpenAI, Ollama, …) ------------------------------------
-    @app.get("/v1/providers")
-    def providers_get() -> list[dict[str, Any]]:
-        return manager.get_providers()
-
-    @app.post("/v1/providers")
-    def providers_set(body: dict) -> dict[str, Any]:
-        name = (body or {}).get("name", "")
-        if not name:
-            return {"ok": False, "error": "name required"}
-        return manager.set_provider(name, (body or {}).get("fields"))
-
-    @app.delete("/v1/providers/{name}")
-    def providers_remove(name: str) -> dict[str, Any]:
-        return manager.remove_provider(name)
-
-    @app.post("/v1/providers/verify")
-    async def providers_verify(body: dict) -> dict[str, Any]:
-        # Live read-only credential check (sync httpx) — run off the event loop.
-        name = (body or {}).get("name", "") or "openai"
-        return await asyncio.to_thread(
-            manager.verify_provider, name, (body or {}).get("fields")
-        )
-
-    @app.post("/v1/providers/openai-codex/signin")
-    async def codex_signin() -> dict[str, Any]:
-        # Opens the system browser and waits on the loopback callback — that can
-        # take minutes, so it runs as a background task; the GUI polls the status
-        # route for the flip (authorizing → signed_in | last_error). Same shape as
-        # the MCP OAuth connect route.
-        manager.begin_codex_signin()
-        asyncio.create_task(manager.codex_signin())
-        return {"ok": True, "started": True}
-
-    @app.get("/v1/providers/openai-codex/status")
-    def codex_status() -> dict[str, Any]:
-        return manager.codex_status()
-
-    @app.post("/v1/providers/openai-codex/signout")
-    def codex_signout() -> dict[str, Any]:
-        return manager.codex_signout()
+    app.include_router(build_providers_router(manager))
 
     # -- settings (model API key) -----------------------------------------------
-    @app.get("/v1/settings")
-    def settings_get() -> dict[str, Any]:
-        return manager.get_settings()
+    app.include_router(build_settings_router(manager))
 
-    @app.post("/v1/settings/model-key")
-    def settings_set_model_key(body: dict) -> dict[str, Any]:
-        return manager.set_model_key((body or {}).get("api_key", ""))
-
-    @app.post("/v1/settings/default-model")
-    def settings_set_default_model(body: dict) -> dict[str, Any]:
-        return manager.set_default_model((body or {}).get("model", ""))
-
-    @app.post("/v1/settings/models/add")
-    def settings_models_add(body: dict) -> dict[str, Any]:
-        return manager.add_model((body or {}).get("model", ""))
-
-    @app.post("/v1/settings/models/remove")
-    def settings_models_remove(body: dict) -> dict[str, Any]:
-        return manager.remove_model((body or {}).get("model", ""))
-
-    @app.post("/v1/settings/onboarded")
-    def settings_set_onboarded(body: dict) -> dict[str, Any]:
-        return manager.set_onboarded(bool((body or {}).get("value", True)))
-
-    @app.post("/v1/settings/experimental-connectors")
-    def settings_set_experimental(body: dict) -> dict[str, Any]:
-        return manager.set_experimental_connectors(bool((body or {}).get("value")))
-
-    @app.post("/v1/settings/surfaces")
-    def settings_set_surfaces(body: dict) -> dict[str, Any]:
-        b = body or {}
-        return manager.set_surfaces(chat=b.get("chat"), code=b.get("code"))
-
-    @app.post("/v1/settings/scratch-base")
-    def settings_set_scratch_base(body: dict) -> dict[str, Any]:
-        return manager.set_scratch_base(str((body or {}).get("path", "")))
-
-    @app.post("/v1/settings/nav-layout")
-    def settings_set_nav_layout(body: dict) -> dict[str, Any]:
-        return manager.set_nav_layout(str((body or {}).get("nav_layout", "")))
-
-    @app.post("/v1/settings/sessions-peek")
-    def settings_set_sessions_peek(body: dict) -> dict[str, Any]:
-        # Sidebar: sessions shown per group before "Show more" (owner ask, 2026-07-03).
-        return manager.set_sessions_peek((body or {}).get("sessions_peek", 5))
-
-    @app.post("/v1/settings/context-bar")
-    def settings_set_context_bar(body: dict) -> dict[str, Any]:
-        # Composer: show the context-window fill bar, or just the popover (owner ask).
-        return manager.set_context_bar((body or {}).get("context_bar", True))
-
-    @app.post("/v1/settings/auto-approve")
-    def settings_set_auto_approve(body: dict) -> dict[str, Any]:
-        # Auto-Approve feature flag (spec §1.5): when on, Mode.AUTO_APPROVE gets an LLM
-        # reviewer. Takes effect on the next session build. Turning it off leaves any
-        # shadow-eval setting alone (they are independent switches).
-        return manager.set_auto_approve((body or {}).get("auto_approve", False))
-
-    @app.post("/v1/settings/auto-approve-shadow")
-    def settings_set_auto_approve_shadow(body: dict) -> dict[str, Any]:
-        # Shadow evaluation (Part 6 step 3): the reviewer records what it WOULD decide on
-        # every approval card while the human still decides. Independent of the live flag.
-        return manager.set_auto_approve_shadow((body or {}).get("auto_approve_shadow", False))
-
-    @app.post("/v1/settings/pdf")
-    def settings_set_pdf(body: dict) -> dict[str, Any]:
-        # Token savings (owner ask, 2026-07-17): fallback mode for models without native
-        # PDF support + attach-time page/size thresholds.
-        b = body or {}
-        return manager.set_pdf_settings(
-            fallback=b.get("pdf_fallback"),
-            max_pages=b.get("pdf_max_pages"),
-            max_mb=b.get("pdf_max_mb"),
-        )
-
-    @app.post("/v1/settings/compaction")
-    def settings_set_compaction(body: dict) -> dict[str, Any]:
-        # Auto-compaction overrides (OPE-27): threshold % of the context window, the
-        # absolute token cap, and the summarizer-model pin ("" → session's own model).
-        b = body or {}
-        return manager.set_compaction_settings(
-            threshold_pct=b.get("compaction_threshold_pct"),
-            cap_tokens=b.get("compaction_cap_tokens"),
-            model=b.get("compaction_model"),
-        )
-
-    @app.post("/v1/attachments/inspect-pdf")
-    def attachments_inspect_pdf(body: dict) -> dict[str, Any]:
-        # Attach-time page/size probe for the composer's threshold check. Local only.
-        from ..pdf_support import inspect
-
-        return inspect(str((body or {}).get("data_url", "")))
-
-    # -- direct-message routing -------------------------------------------------
-    @app.get("/v1/messaging/dm-route")
-    def dm_route_get() -> dict[str, Any]:
-        return {"dm_session": manager.dm_session()}
-
-    @app.post("/v1/messaging/dm-route")
-    def dm_route_set(body: dict) -> dict[str, Any]:
-        # A falsy session_id clears the designation (DMs then park as unrouted).
-        return manager.set_dm_session((body or {}).get("session_id", ""))
-
-    if os.environ.get("COWORKER_DEBUG_INJECT") == "1":
-        # Dev-only (env-gated, localhost): feed a message through the real inbound path so the
-        # messaging stack can be exercised without a live bot connection. Not registered otherwise.
-        @app.post("/v1/_debug/inject_inbound")
-        async def debug_inject_inbound(body: dict) -> dict[str, Any]:
-            from ..connectors.base import MessageEvent, SessionSource
-
-            event = MessageEvent(
-                text=str((body or {}).get("text", "")),
-                source=SessionSource(
-                    platform=str(body.get("platform", "slack")),
-                    chat_id=str(body.get("chat_id", "C0BD7KZ1AH5")),
-                    user_id=str(body.get("user_id", "U07JK68S4BH")),
-                    user_name=str(body.get("user_name", "tester")),
-                    chat_type=str(body.get("chat_type", "channel")),
-                    chat_name=str(body.get("chat_name", "")) or None,
-                    thread_id=str(body.get("thread_ts", "")) or None,
-                    team_id=str(body.get("team_id", "")) or None,
-                ),
-                message_id=str(body.get("ts", "")) or None,
-                # §31 mention router: the flag is normally computed from the raw Slack text
-                # at mapping time; the injector sets it directly.
-                mentions_me=bool(body.get("mentions_me")),
-            )
-            await manager._dispatch_inbound(event)
-            return {"ok": True}
+    # -- attachments, direct-message routing, dev injector ----------------------
+    app.include_router(build_attachments_messaging_router(manager))
 
     # -- automations (scheduled tasks) ------------------------------------------
-    @app.get("/v1/automations")
-    def automations_list() -> dict[str, Any]:
-        return manager.list_automations()
-
-    @app.post("/v1/automations")
-    def automations_create(body: dict) -> dict[str, Any]:
-        return manager.create_automation(body or {})
-
-    @app.get("/v1/automations/templates")
-    def automation_templates_list() -> dict[str, Any]:
-        """The automation template marketplace catalog (backend-served, extensible)."""
-        return manager.list_automation_templates()
-
-    @app.post("/v1/automations/templates/{key}/instantiate")
-    def automation_template_instantiate(key: str, body: dict) -> dict[str, Any]:
-        """Create an automation from a marketplace template in one step."""
-        return manager.instantiate_automation_template(key, body or {})
-
-    @app.get("/v1/automations/{task_id}")
-    def automation_get(task_id: str) -> dict[str, Any]:
-        return manager.get_automation(task_id)
-
-    @app.patch("/v1/automations/{task_id}")
-    def automation_update(task_id: str, body: dict) -> dict[str, Any]:
-        return manager.update_automation(task_id, body or {})
-
-    @app.delete("/v1/automations/{task_id}")
-    def automation_delete(task_id: str) -> dict[str, Any]:
-        return manager.delete_automation(task_id)
-
-    @app.post("/v1/automations/{task_id}/seen")
-    def automations_seen(task_id: str) -> dict[str, Any]:
-        return manager.mark_automation_seen(task_id)
-
-    @app.post("/v1/automations/{task_id}/run")
-    def automation_run(task_id: str) -> dict[str, Any]:
-        # Prepare a live manual run; the GUI opens the returned session and drives it.
-        return manager.prepare_manual_run(task_id)
-
-    @app.post("/v1/automations/{task_id}/runs/{run_id}/finalize")
-    def automation_run_finalize(task_id: str, run_id: str) -> dict[str, Any]:
-        return manager.finalize_manual_run(task_id, run_id)
+    app.include_router(build_automations_router(manager))
 
     @app.websocket("/ws/session/{session_id}")
     async def ws_session(ws: WebSocket, session_id: str) -> None:
