@@ -67,4 +67,9 @@ def build_observability_router(manager: SessionManager) -> APIRouter:
             return {"ok": False, "error": "provider required"}
         return manager.set_web_search(provider, (body or {}).get("api_key"))
 
+    # -- trace export (double opt-in: endpoint configured AND export called) -----
+    @router.post("/v1/observability/export")
+    def observability_export(body: dict) -> dict[str, Any]:
+        return manager.export_trace_otlp(str((body or {}).get("session_id", "")))
+
     return router

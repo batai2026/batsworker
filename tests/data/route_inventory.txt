@@ -72,7 +72,9 @@ GET	/v1/sessions/{session_id}/trajectory	session_trajectory
 POST	/v1/sessions/{session_id}/fork	session_fork
 POST	/v1/sessions/{session_id}/replay	session_replay
 GET	/v1/sessions/{session_id}/trajectory/diff	session_trajectory_diff
-POST	/v1/observability/export	observability_export
+GET	/v1/sessions/{session_id}/project-menu	project_menu
+PUT	/v1/sessions/{session_id}/bindings	put_binding
+POST	/v1/sessions/{session_id}/project-name	name_project
 GET	/v1/sessions/{session_id}/board	session_board
 GET	/v1/sessions/{session_id}/board/item	session_board_item
 GET	/v1/sessions/{session_id}/board/attachment	session_board_attachment
@@ -123,9 +125,6 @@ DELETE	/v1/egress/policy/{domain}	egress_policy_delete
 GET	/v1/settings/sandbox	sandbox_settings_get
 PUT	/v1/settings/sandbox	sandbox_settings_put
 GET	/v1/settings/openshell/status	openshell_status_get
-GET	/v1/sessions/{session_id}/project-menu	project_menu
-PUT	/v1/sessions/{session_id}/bindings	put_binding
-POST	/v1/sessions/{session_id}/project-name	name_project
 POST	/v1/chat/completions	chat_completions
 GET	/v1/mcp	mcp_list
 POST	/v1/mcp	mcp_add
@@ -180,6 +179,7 @@ POST	/v1/browser/close	browser_close_post
 GET	/v1/browser/recordings	browser_recordings_get
 GET	/v1/web-search	web_search_get
 POST	/v1/web-search	web_search_set
+POST	/v1/observability/export	observability_export
 GET	/v1/providers	providers_get
 POST	/v1/providers	providers_set
 DELETE	/v1/providers/{name}	providers_remove
