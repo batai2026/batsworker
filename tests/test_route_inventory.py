@@ -34,11 +34,15 @@ BASELINE = Path(__file__).parent / "data" / "route_inventory.txt"
 
 def _route_lines(app) -> list[str]:
     """`METHODS<TAB>PATH<TAB>NAME` for every registered route, in registration order."""
-    return _walk(app.router.routes, "")
-
-
-def _walk(routes, prefix: str) -> list[str]:
     lines: list[str] = []
+    for path, method_label, name, _route in _flatten(app.router.routes, ""):
+        lines.append(f"{method_label}\t{path}\t{name}")
+    return lines
+
+
+def _flatten(routes, prefix: str):
+    """`(path, method_label, name)` for each route, descending into included routers."""
+    out = []
     for route in routes:
         # FastAPI (0.14x) keeps an `include_router(...)` call as one `_IncludedRouter`
         # entry holding the child router instead of splicing its routes in place. Descend,
@@ -46,8 +50,8 @@ def _walk(routes, prefix: str) -> list[str]:
         # against — and so `include_router` order is compared exactly like decorator order.
         include_context = getattr(route, "include_context", None)
         if include_context is not None:
-            lines.extend(
-                _walk(route.original_router.routes, prefix + include_context.prefix)
+            out.extend(
+                _flatten(route.original_router.routes, prefix + include_context.prefix)
             )
             continue
         methods = getattr(route, "methods", None)
@@ -58,8 +62,8 @@ def _walk(routes, prefix: str) -> list[str]:
             method_label = ",".join(sorted(set(methods) - {"HEAD"}))
         else:
             method_label = "-"  # the bare openapi/docs routes carry no methods of their own
-        lines.append(f"{method_label}\t{prefix + route.path}\t{route.name}")
-    return lines
+        out.append((prefix + route.path, method_label, route.name, route))
+    return out
 
 
 def _collect(scratch: Path) -> list[str]:
@@ -106,6 +110,41 @@ def test_route_inventory_matches_baseline(tmp_path):
 def test_route_inventory_is_not_empty(tmp_path):
     # A guard on the guard: a broken collector would otherwise "match" an empty baseline.
     assert len(_collect(tmp_path)) >= 200
+
+
+def test_no_route_shadows_a_later_one(tmp_path):
+    """Registration order is behaviour, so the table must stay shadow-free.
+
+    `/v1/personas/catalog` only survives because it is registered before
+    `/v1/personas/{persona_id}`; the same trap exists for `/v1/skills/upload`,
+    `/v1/memory/settings`, `/v1/inbox/routing` and every other static path that shares a
+    prefix with a parametric route. The baseline catches an accidental reorder, but it
+    cannot tell a harmless one from a fatal one — this can: no literal (parameter-free)
+    path may be claimed by an earlier route that shares any HTTP method with it.
+    """
+    from coworker.server.app import create_app
+    from coworker.server.manager import SessionManager
+
+    manager = SessionManager(data_dir=tmp_path / "shadow")
+    flat = _flatten(create_app(manager).router.routes, "")
+
+    shadowed = []
+    for index, (path, method_label, name, route) in enumerate(flat):
+        if "{" in path or method_label == "WEBSOCKET":
+            continue  # a parametric/WS target is matched, not matching
+        for earlier_path, earlier_methods, earlier_name, earlier in flat[:index]:
+            if earlier_methods != method_label:
+                continue
+            if earlier.path_regex.match(path):
+                shadowed.append(
+                    f"{method_label} {path} ({name}) is claimed first by "
+                    f"{earlier_path} ({earlier_name})"
+                )
+                break
+
+    assert not shadowed, "registration order shadows these routes:\n  " + "\n  ".join(
+        shadowed
+    )
 
 
 def test_debug_inject_route_stays_env_gated(tmp_path, monkeypatch):
