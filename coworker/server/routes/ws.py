@@ -17,12 +17,13 @@ from __future__ import annotations
 import asyncio
 import json
 from collections import deque
-from typing import Any, Optional
+from typing import Any
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 from ..auth import origin_allowed, websocket_authenticated
 from ..manager import SessionManager
+from ..ws_turns import TurnRunner
 from ..ws_prompts import PromptGateway
 from ...attachments import (
     MAX_ATTACHMENTS as _MAX_ATTACHMENTS,
@@ -81,31 +82,6 @@ def build_ws_router(manager: SessionManager, api_token: str) -> APIRouter:
         # reconnect) and can be resolved from any surface. `visibility` decides where they SHOW:
         # Unattended → the cross-session Inbox; attended → inline in this session only. The agent
         # stays blocked until the item is resolved (live WS response, REST, or a bound channel).
-        async def _apply_model(model: Optional[str]) -> None:
-            # Mid-session rebind is allowed (roadmap item 3, supersedes the 2026-07-04
-            # lock): history is canonical and providers convert per call. A real switch
-            # appends a persisted notice; broadcast it so live views render the marker
-            # and update their header. Never rebind mid-turn — the running loop reads
-            # `engine.model` per iteration and a mixed turn is exactly the breakage the
-            # old lock existed to prevent.
-            if not model or manager.is_running(session_id):
-                return
-            notice = engine.switch_model(model)
-            if notice is None:  # same model, or first bind on a fresh session
-                return
-            manager.persist_session(session_id)
-            await manager.broadcast_session(
-                session_id,
-                {"type": "model_changed", "data": {"model": model, "text": notice}},
-            )
-
-        def _resolve_pending(resolution: str) -> None:
-            # Live WS responses resolve THE session's single pending prompt (one at a time, since the
-            # agent blocks). Reconnect / Inbox resolve by id via REST instead.
-            pend = manager.inbox.pending(session_id)
-            if pend:
-                manager.inbox.resolve(pend[0].id, resolution)
-
         workspace = ws.query_params.get("workspace")
         mcp_tools = await manager.prepare_mcp_tools(
             session_id, workspace=workspace, agent=agent
@@ -181,47 +157,6 @@ def build_ws_router(manager: SessionManager, api_token: str) -> APIRouter:
             }
         )
 
-        # Checkpoint events: persist mid-turn so a crash/quit can't eat the conversation.
-        # turn_start = the user message just landed (a brand-new session gets its row here,
-        # not at connect — empty never-used sessions shouldn't appear in Recents);
-        # permission_required/directory_requested = parked indefinitely on the user;
-        # iteration_end = a model response + its tool results completed.
-        _CHECKPOINTS = {
-            "turn_start",
-            "permission_required",
-            "directory_requested",
-            "plan_proposed",
-            "iteration_end",
-        }
-
-        async def run_turn(content, *, retry: bool = False, display=None) -> None:
-            # The receive loop atomically claims this session before scheduling the task.
-            # Keeping the claim outside prevents two back-to-back frames from both starting.
-            try:
-                events = (
-                    engine.retry()
-                    if retry
-                    else engine.run(content, display=display)
-                )
-                async for event in events:
-                    # Broadcast to every socket viewing this session (this socket included — it's a
-                    # registered client), so a second view of the same session stays in sync too.
-                    await manager.broadcast_session(
-                        session_id, {"type": event.type.value, "data": event.data}
-                    )
-                    if event.type.value in _CHECKPOINTS:
-                        manager.save(session_id, engine)
-                    if event.type.value == "turn_start":
-                        # Title on the user's words the moment they land — never behind
-                        # a long agentic turn (owner catch 2026-08-24).
-                        manager._maybe_autotitle(session_id)
-            finally:
-                manager.mark_idle(session_id)
-                manager.save(session_id, engine)
-                await manager.broadcast_session(
-                    session_id, {"type": "turn_done", "data": {}}
-                )
-
         # This socket is now a live view of the session; background turns (channel delivery,
         # self-wake, durable resume) broadcast here too, not just locally driven run_turns.
         manager.register_session_client(session_id, ws.send_json)
@@ -250,13 +185,9 @@ def build_ws_router(manager: SessionManager, api_token: str) -> APIRouter:
             # or flush an in-progress assistant stream in the GUI.
             await ws.send_json({"type": "input_rejected", "data": {"error": reason}})
 
-        async def claim_turn(*, retry: bool = False, content=None, display=None) -> None:
-            if not manager.try_mark_running(session_id):
-                await reject_input(
-                    "This session is already running a turn. Wait for it to finish or stop it."
-                )
-                return
-            asyncio.create_task(run_turn(content, retry=retry, display=display))
+        # Turns live in ws_turns.TurnRunner: it owns the atomic claim, the event
+        # broadcast, the checkpoint saves and the always-broadcast `turn_done`.
+        turns = TurnRunner(manager, session_id, engine, reject=reject_input)
 
         try:
             while True:
@@ -286,9 +217,9 @@ def build_ws_router(manager: SessionManager, api_token: str) -> APIRouter:
                     await reject_input("Invalid WebSocket message: missing string type.")
                     continue
                 if kind == "approval":
-                    _resolve_pending(message.get("decision", "deny"))
+                    turns.resolve_pending(message.get("decision", "deny"))
                 elif kind == "directory_response":
-                    _resolve_pending(
+                    turns.resolve_pending(
                         json.dumps(
                             {
                                 "granted": bool(message.get("granted")),
@@ -298,11 +229,11 @@ def build_ws_router(manager: SessionManager, api_token: str) -> APIRouter:
                         )
                     )
                 elif kind == "tool_response":
-                    _resolve_pending(
+                    turns.resolve_pending(
                         json.dumps({"approved": bool(message.get("approved"))})
                     )
                 elif kind == "plan_response":
-                    _resolve_pending(
+                    turns.resolve_pending(
                         json.dumps(
                             {
                                 "approved": bool(message.get("approved")),
@@ -312,7 +243,7 @@ def build_ws_router(manager: SessionManager, api_token: str) -> APIRouter:
                         )
                     )
                 elif kind in ("team_response", "items_response"):
-                    _resolve_pending(
+                    turns.resolve_pending(
                         json.dumps(
                             {
                                 "approved": bool(message.get("approved")),
@@ -326,7 +257,7 @@ def build_ws_router(manager: SessionManager, api_token: str) -> APIRouter:
                         )
                     )
                 elif kind == "question_response":
-                    _resolve_pending(str(message.get("answer", "")))
+                    turns.resolve_pending(str(message.get("answer", "")))
                 elif kind == "allow_anyway":
                     # §8.4: the user clicked "Allow anyway" on a reviewer-denied tool card.
                     # Registers a ONE-SHOT exact-action approval on the engine; the GUI then
@@ -345,7 +276,7 @@ def build_ws_router(manager: SessionManager, api_token: str) -> APIRouter:
                 elif kind == "retry":
                     # Re-run after a provider error (engine guards on the error-notice
                     # tail, so a stray frame is a no-op that still ends with turn_done).
-                    await claim_turn(retry=True)
+                    await turns.claim(retry=True)
                 elif kind == "set_mode":
                     try:
                         new_mode = Mode(message.get("mode"))
@@ -403,7 +334,7 @@ def build_ws_router(manager: SessionManager, api_token: str) -> APIRouter:
                     if model is not None and not isinstance(model, str):
                         await reject_input("Invalid model: expected a string.")
                     else:
-                        await _apply_model(model)
+                        await turns.apply_model(model)
                 elif kind == "user_message":
                     raw_text = message.get("text")
                     if raw_text is None:
@@ -538,10 +469,10 @@ def build_ws_router(manager: SessionManager, api_token: str) -> APIRouter:
                             f'load_skill("{skill}") and follow its instructions.'
                             + (f"\n\n{text}" if text else "")
                         )
-                    await _apply_model(model)
+                    await turns.apply_model(model)
                     if text or attachments:
                         content = build_user_content(text, attachments)
-                        await claim_turn(content=content, display=display)
+                        await turns.claim(content=content, display=display)
                 else:
                     await reject_input(f"Unknown WebSocket message type: {kind}.")
         except WebSocketDisconnect:
