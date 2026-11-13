@@ -191,3 +191,7 @@ _GEN_ACCOUNT_PROP = {
 
 def _clamp(n: Any, default: int = 10, ceiling: int = 20) -> int:
     return max(1, min(int(n or default), ceiling))
+
+
+def _bearer_headers(token: str) -> dict[str, str]:
+    return {"Authorization": f"Bearer {token}", "Accept": "application/json"}
