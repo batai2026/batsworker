@@ -32,6 +32,10 @@ on:
         description: "基线漂移即失败（1=开启，0=仅参照）"
         required: false
         default: "1"
+      auto_approve:
+        description: "自动批准工具调用（1=开，0=关）——只有需要真跑工具的用例才开"
+        required: false
+        default: "0"
 
 # Read-only token: the matrix job holds provider API keys and neither job needs to
 # write to the repository.
@@ -108,12 +112,17 @@ jobs:
           HARNESSES: ${{ inputs.harnesses }}
           MAX_RATIO: ${{ inputs.max_bytes_ratio }}
           GATE: ${{ inputs.check_baseline }}
+          AUTO_APPROVE: ${{ inputs.auto_approve }}
         run: |
           args=(--case "$CASE" --models "$MODELS" --harnesses "$HARNESSES"
                 --workspace "${{ runner.temp }}/eval-ws"
                 --max-bytes-ratio "$MAX_RATIO"
                 --out "${{ runner.temp }}/eval-report.json")
           if [ "$GATE" = "1" ]; then args+=(--check-baseline); fi
+          if [ "$AUTO_APPROVE" = "1" ]; then args+=(--auto-approve); fi
+          # Off by default: with it on the engine auto-approves tool calls, which changes
+          # what the matrix measures (tool-using vs reasoning-only) — record those runs
+          # against their own baseline instead of mixing them.
           python -m coworker.eval.matrix "${args[@]}"
       - uses: actions/upload-artifact@v4
         if: always()
