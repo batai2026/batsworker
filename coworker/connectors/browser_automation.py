@@ -246,7 +246,7 @@ def browser_close_session() -> dict[str, Any]:
 def _cap(value: int, default: int = 20000, upper: int = 100000) -> int:
     try:
         return max(1, min(int(value or default), upper))
-    except Exception:
+    except (TypeError, ValueError):
         return default
 
 

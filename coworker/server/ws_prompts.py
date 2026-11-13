@@ -32,7 +32,7 @@ def parse_json(s: str) -> dict[str, Any]:
     try:
         v = json.loads(s) if s else {}
         return v if isinstance(v, dict) else {}
-    except Exception:
+    except (json.JSONDecodeError, TypeError):
         return {}
 
 

@@ -566,7 +566,7 @@ class TurnEngine:
                     fn = tc.get("function") or {}
                     try:
                         args = json.loads(fn.get("arguments") or "{}")
-                    except Exception:
+                    except (json.JSONDecodeError, TypeError):
                         args = {}
                     out.append(
                         ToolCall(id=tc.get("id"), name=fn.get("name"), arguments=args)

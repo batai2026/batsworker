@@ -47,7 +47,7 @@ def _maybe_json(value: Any) -> Any:
     if isinstance(value, str) and value[:1] in "[{":
         try:
             return json.loads(value)
-        except Exception:
+        except (json.JSONDecodeError, TypeError):
             return value
     return value
 
