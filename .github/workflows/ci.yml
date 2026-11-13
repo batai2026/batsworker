@@ -198,10 +198,20 @@ jobs:
         shell: pwsh
         run: cargo clippy --all-targets -- -D warnings
       - name: Assert the bundled SPA keeps its layout
-        shell: bash
+        shell: pwsh
         run: |
-          test -f surfaces/gui/src-tauri/target/debug/dist/index.html
-          test -d surfaces/gui/src-tauri/target/debug/dist/assets
+          # `cargo clippy` compiles but never stages `bundle.resources`, so
+          # `target/debug/dist` is a side effect of `tauri build` / `tauri dev` only.
+          # Asserting on it here tested a build this job does not run (it went red on
+          # every run since the guard was added). Assert on the source the bundle copies
+          # from, plus the mapping that puts it next to the executable.
+          if (-not (Test-Path surfaces/gui/dist/index.html)) {
+            throw "missing surfaces/gui/dist/index.html — the SPA build produced no entry point"
+          }
+          if (-not (Test-Path surfaces/gui/dist/assets)) {
+            throw "missing surfaces/gui/dist/assets — the SPA build produced no asset dir"
+          }
+          node -e "const c=require('./surfaces/gui/src-tauri/tauri.conf.json'); const r=(c.bundle&&c.bundle.resources)||{}; if(r['../dist']!=='dist'){console.error('bundle.resources must map ../dist -> dist, got '+JSON.stringify(r)); process.exit(1)}"
       - name: Test the STT sidecar
         shell: pwsh
         run: cargo test --manifest-path stt/Cargo.toml
