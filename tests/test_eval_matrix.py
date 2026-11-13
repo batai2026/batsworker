@@ -107,6 +107,53 @@ async def test_run_matrix_stub_runs_code_mode(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_run_matrix_records_a_timeout_instead_of_hanging(tmp_path):
+    """An unreachable endpoint must land as a `timeout` row, not as silent minutes.
+
+    The provider SDKs default to a 600s request timeout with two retries, so before this
+    guard a dead endpoint looked like a hung job: no output, no failure, no end. The turn is
+    now bounded by `--timeout`, and cancelling the await aborts the SDK call with it.
+    """
+    import time
+
+    from coworker.eval import matrix
+    from coworker.personas.harness import builtin_specs
+    from coworker.providers import AssistantTurn, ModelCapabilities, ProviderClient
+
+    class _SlowProvider(ProviderClient):
+        # The engine calls `complete` inside `asyncio.to_thread`, so the blocking sleep is
+        # what a hung HTTP call looks like from the turn's point of view. It is kept short:
+        # the timeout fires at 0.1s and the thread finishes a second later on its own.
+        def complete(self, *, model, messages, tools=None, **settings):  # noqa: ANN001
+            time.sleep(1.0)
+            return AssistantTurn(text="too late", finish_reason="stop")
+
+        def capabilities(self, model):  # noqa: ANN001
+            return ModelCapabilities()
+
+    report = await matrix.run_matrix(
+        turns=[
+            matrix.RecordedTurn(turn=1, input_text="hello"),
+            matrix.RecordedTurn(turn=2, input_text="again"),
+        ],
+        models=["stub:model"],
+        harness_names=["minimal"],
+        workspace=tmp_path,
+        provider_factory=lambda _model, _spec: _SlowProvider(),
+        work_dir=tmp_path / "work",
+        harness_specs=builtin_specs(),
+        timeout=0.1,
+    )
+    (cell,) = report["cells"]
+    assert cell["status"] == "error"
+    assert "exceeded 0.1s" in (cell["error"] or "")
+    # The first turn times out and the cell stops there instead of trying the second one.
+    (turn,) = cell["turns"]
+    assert turn["status"] == "timeout"
+    assert turn["turn"] == 1
+
+
+@pytest.mark.asyncio
 async def test_run_matrix_stub_is_offline_and_reports_digests(tmp_path):
     report = await run_matrix(
         turns=[RecordedTurn(turn=1, input_text="hello")],

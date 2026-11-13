@@ -43,6 +43,12 @@ from ..trajectory import SessionTrajectory, TrajectoryStore
 # installed_specs() 在运行时合并。
 HARNESSES: dict[str, HarnessSpec] = builtin_specs()
 
+# Per-turn wall clock (seconds). Short enough that an unreachable endpoint surfaces a
+# `timeout` row in the report instead of an hour of silence; long enough for a normal agent
+# turn with one tool round trip. The provider SDKs default to a 600s request timeout with 2
+# retries, which is why a dead endpoint used to look like a silent job.
+DEFAULT_TURN_TIMEOUT = 180.0
+
 
 @dataclass
 class RecordedTurn:
@@ -221,6 +227,7 @@ async def _run_cell(
     provider_factory: Callable[[str, HarnessSpec], ProviderClient],
     auto_approve: bool,
     work_dir: Path,
+    timeout: float = DEFAULT_TURN_TIMEOUT,
 ) -> dict[str, Any]:
     provider = provider_factory(model, spec)
     agent = _harness_agent(spec)
@@ -243,9 +250,20 @@ async def _run_cell(
     for turn in turns:
         started = time.perf_counter()
         status = "ok"
-        try:
+
+        async def _drain() -> None:
             async for _event in engine.run(turn.input_text):
                 pass
+
+        try:
+            # A turn is bounded on purpose. The provider SDKs default to a 600s request
+            # timeout with 2 retries, so an unreachable endpoint (a China-hosted gateway
+            # from a US runner, say) used to sit silent for ~30 minutes with no log line.
+            # Cancelling here aborts the SDK call too: it is an await inside this task.
+            await asyncio.wait_for(_drain(), timeout=timeout)
+        except asyncio.TimeoutError:
+            status = "timeout"
+            error = f"turn {turn.turn} exceeded {timeout:g}s"
         except Exception as exc:  # 一个 cell 失败不影响矩阵其它 cell
             status = "error"
             error = f"{type(exc).__name__}: {exc}"
@@ -256,9 +274,8 @@ async def _run_cell(
                 "duration_s": round(time.perf_counter() - started, 3),
             }
         )
-        if status == "error":
+        if status in ("error", "timeout"):
             break
-
     records = store.read(session_id, limit=100000)
     requests = _requests_by_turn(records)
     tool_calls = _tool_calls_by_turn(records)
@@ -293,6 +310,7 @@ async def run_matrix(
     out_path: str | Path | None = None,
     work_dir: str | Path | None = None,
     harness_specs: Optional[dict[str, HarnessSpec]] = None,
+    timeout: float = DEFAULT_TURN_TIMEOUT,
 ) -> dict[str, Any]:
     """跑完整矩阵，返回（并可选写出）报告字典。
 
@@ -321,6 +339,7 @@ async def run_matrix(
                     provider_factory=factory,
                     auto_approve=auto_approve,
                     work_dir=base,
+                    timeout=timeout,
                 )
             )
 
@@ -508,6 +527,16 @@ def main(argv: Optional[list[str]] = None) -> int:
         help="自动批准工具调用（无人值守跑工具时才开；默认引擎拒绝）",
     )
     parser.add_argument("--max-turns", type=int, default=0, help="最多跑前 N 轮（0 = 全部）")
+    parser.add_argument(
+        "--timeout",
+        type=float,
+        default=DEFAULT_TURN_TIMEOUT,
+        help=(
+            "单轮墙钟上限（秒，默认 "
+            f"{DEFAULT_TURN_TIMEOUT:g}）。端点不可达时让该轮快速记为 timeout，"
+            "而不是等 SDK 默认的 600s×3 重试"
+        ),
+    )
     parser.add_argument("--out", help="报告 JSON 输出路径")
     parser.add_argument(
         "--check-baseline",
@@ -611,6 +640,7 @@ def main(argv: Optional[list[str]] = None) -> int:
             provider_factory=factory,
             auto_approve=args.auto_approve,
             out_path=args.out,
+            timeout=args.timeout,
         )
     )
     if args.write_baseline:
