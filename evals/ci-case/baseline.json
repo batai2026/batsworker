@@ -1,11 +1,11 @@
 {
   "session_id": "ci-case",
-  "captured_at": "2026-11-07T10:15:07",
+  "captured_at": "2026-11-13T19:27:31",
   "turns": [
     {
       "turn": 1,
       "model": "stub:model",
-      "bytes": 2734,
+      "bytes": 3132,
       "requests": 1,
       "tool_calls": 0,
       "tools": []
@@ -13,7 +13,7 @@
     {
       "turn": 2,
       "model": "stub:model",
-      "bytes": 2823,
+      "bytes": 3221,
       "requests": 1,
       "tool_calls": 0,
       "tools": []
