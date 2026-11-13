@@ -44,6 +44,10 @@ on:
         description: "单轮墙钟上限（秒）——端点不可达时让该轮快速记为 timeout"
         required: false
         default: "180"
+      baseline_file:
+        description: "基线文件名（相对 case 目录）—— 真实模型用 real-baseline.json"
+        required: false
+        default: real-baseline.json
 
 # Read-only token: the matrix job holds provider API keys and neither job needs to
 # write to the repository.
@@ -123,6 +127,7 @@ jobs:
           AUTO_APPROVE: ${{ inputs.auto_approve }}
           MAX_TURNS: ${{ inputs.max_turns }}
           TURN_TIMEOUT: ${{ inputs.turn_timeout }}
+          BASELINE_FILE: ${{ inputs.baseline_file }}
         run: |
           args=(--case "$CASE" --models "$MODELS" --harnesses "$HARNESSES"
                 --workspace "${{ runner.temp }}/eval-ws"
@@ -132,6 +137,15 @@ jobs:
           if [ "$GATE" = "1" ]; then args+=(--check-baseline); fi
           if [ "$AUTO_APPROVE" = "1" ]; then args+=(--auto-approve); fi
           if [ "$MAX_TURNS" != "0" ]; then args+=(--max-turns "$MAX_TURNS"); fi
+          # 真实模型必须比自己的基线：real-baseline.json 按 (harness, model) 存，
+          # 拿 stub 基线 (3132/3221 字节) 去卡 SCNet-Max (9109) 只会必然失败。
+          base_path="$CASE/$BASELINE_FILE"
+          if [ -f "$base_path" ]; then
+            args+=(--baseline-file "$base_path")
+          elif [ "$GATE" = "1" ]; then
+            echo "no $base_path — run once with check_baseline=0, then save the report as $BASELINE_FILE before enabling the gate"
+            exit 1
+          fi
           # Off by default: with it on the engine auto-approves tool calls, which changes
           # what the matrix measures (tool-using vs reasoning-only) — record those runs
           # against their own baseline instead of mixing them.
