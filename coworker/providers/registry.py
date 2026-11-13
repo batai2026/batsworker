@@ -643,6 +643,22 @@ DESCRIPTORS: list[ProviderDescriptor] = [
         env_key="META_API_KEY",
         endpoint_help="Prefilled with the Meta Model API endpoint (public preview, US-only as of 2026-07).",
     ),
+    _compat(
+        "scnet",
+        "SCNet",
+        base_url="https://api.scnet.cn/api/llm/v1",
+        recommended_model="SCNet-Max",
+        env_key="SCNET_API_KEY",
+        endpoint_help="Prefilled with SCNet's OpenAI-compatible LLM gateway; edit only for a regional or proxy variant.",
+    ),
+    _compat(
+        "unisound",
+        "\u4e91\u77e5\u58f0 (Unisound)",
+        base_url="https://maas-api.unisound.com/v1",
+        recommended_model="u2-flash",
+        env_key="UNISOUND_API_KEY",
+        endpoint_help="Prefilled with Unisound's MaaS OpenAI-compatible endpoint; edit only for a regional or proxy variant.",
+    ),
     # Resellers: many labs' models behind one key, using THEIR model namespaces (the curated
     # ids + display labels live in providers/matrix.py). TODO: add Groq here (+ its matrix
     # rows) once the current provider surface is tested — deliberately deferred to bound

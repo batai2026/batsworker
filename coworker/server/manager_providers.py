@@ -158,6 +158,10 @@ class ProvidersMixin:
         "qwen": ["qwen3-max", "qwen3-coder-plus", "qwen-plus"],
         "xai": ["grok-4.3", "grok-4"],
         "mistral": ["mistral-large-latest", "mistral-small-latest"],
+        # Domestic MaaS gateways (owner-supplied ids, 2026-11-13). Each list starts with the
+        # descriptor's `recommended_model`, which `test_providers` pins.
+        "scnet": ["SCNet-Max"],
+        "unisound": ["u2-flash"],
     }
 
     def _suggested_models(self, name: str) -> list[str]:
