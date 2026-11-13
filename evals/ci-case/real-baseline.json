@@ -280,6 +280,8 @@
     {
       "harness": "minimal",
       "model": "deepseek:deepseek-v4.1",
+      "retired": true,
+      "note": "deepseek-v4.1 已不在 provider 目录（COMPAT_MODELS 只有 deepseek-v4-flash / deepseek-v4-pro）；此格仅是 2026-11-07 的历史记录，对现在的 id 不构成门禁基线",
       "session_id": "eval-minimal-deepseek-deepseek-v4-1-d43daa",
       "status": "ok",
       "error": null,
