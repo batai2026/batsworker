@@ -114,7 +114,9 @@ class Gateway:
                     json={"response_type": "ephemeral", "text": text},
                     timeout=10,
                 )
-            except Exception:
+            # Slack's response_url is fire-and-forget: a transport failure or a non-JSON reply
+            # only costs us the ephemeral ack, which the user can live without.
+            except (httpx.HTTPError, ValueError):
                 logger.debug("Slack ephemeral interaction response failed", exc_info=True)
 
         await to_thread(_post)
@@ -127,6 +129,8 @@ class Gateway:
             if self._on_unauthorized is not None:
                 try:
                     await self._on_unauthorized(event)
+                # Callback boundary: the host supplies this hook; a broken hook must not drop
+                # the inbound message on the floor.
                 except Exception:
                     logger.exception("parking unauthorized inbound failed")
             return
@@ -137,6 +141,8 @@ class Gateway:
             try:
                 if self._reply_resolver(event):
                     return
+            # Callback boundary (same reason as above): a resolver that raises must leave the
+            # event to the normal handler instead of killing the gateway loop.
             except Exception:
                 logger.exception("inbox reply resolver failed")
         if self._handler is not None:
@@ -186,6 +192,8 @@ class Gateway:
         for adapter in self._adapters.values():
             try:
                 await adapter.disconnect()
+            # Adapter boundary: each platform adapter owns its own failure types (socket,
+            # protocol, SDK); one adapter failing to close must not stop the others closing.
             except Exception:
                 logger.exception("error disconnecting %s adapter", adapter.platform)
 
