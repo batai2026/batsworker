@@ -371,6 +371,14 @@ def _temp_dir() -> Path:
 DEFAULT_MAX_BYTES_RATIO = 0.10
 
 
+def _in_git_worktree(path: Path) -> bool:
+    """工作目录是否落在一个 git 仓库里（环境块会因此带上 branch/status/commits）。"""
+    for parent in [path, *path.parents]:
+        if (parent / ".git").exists():
+            return True
+    return False
+
+
 def _resolve_cell_baseline(
     baseline: dict[str, Any], harness: str, model: str
 ) -> dict[str, Any] | None:
@@ -639,6 +647,19 @@ def main(argv: Optional[list[str]] = None) -> int:
     if args.max_bytes_ratio < 0:
         print("--max-bytes-ratio must be >= 0", file=sys.stderr)
         return 2
+    if args.write_baseline or args.check_baseline:
+        # 环境块里有 git 快照（branch / status / recent commits）。workspace 落在仓库里时，
+        # 基线会把这几行一起拍进去，于是和 CI 的 `${{ runner.temp }}` 空目录差出几百字节 ——
+        # 2026-11-13 就是这样把 push 触发的 golden gate 弄红的。
+        ws_path = Path(args.workspace).expanduser().resolve()
+        if _in_git_worktree(ws_path):
+            print(
+                f"warning: workspace {ws_path} is inside a git work tree — the environment "
+                "block embeds the git snapshot (branch/status/recent commits), so the bytes "
+                "will not match a run on an empty directory; use an empty non-git dir for "
+                "baseline work (CI uses ${{ runner.temp }}/eval-ws)",
+                file=sys.stderr,
+            )
     if args.write_baseline:
         if not args.case or not args.stub:
             print("--write-baseline requires --case and --stub", file=sys.stderr)

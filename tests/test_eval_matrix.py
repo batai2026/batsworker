@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 import pytest
 
@@ -104,6 +105,12 @@ async def test_run_matrix_stub_runs_code_mode(tmp_path):
     assert "exec" in turn["tools"]
     assert "read_file" not in turn["tools"]  # 域工具坍缩进桥接，不再上模型面
     assert "run_shell" not in turn["tools"]
+
+
+def test_in_git_worktree_flags_the_repo_and_spares_a_temp_dir(tmp_path):
+    """基线字节里含 git 快照，所以只有“在不在仓库里”能解释 Windows/CI 的差几百字节。"""
+    assert matrix._in_git_worktree(Path.cwd()) is True
+    assert matrix._in_git_worktree(tmp_path) is False
 
 
 def test_compare_baseline_picks_the_matching_cell_model():
