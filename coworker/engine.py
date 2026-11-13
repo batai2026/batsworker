@@ -475,6 +475,8 @@ class TurnEngine:
         text = f"Model switched to {model_labels().get(model, model)}"
         try:
             caps = self.provider.capabilities(model)
+        # Wide on purpose: capabilities() is provider-defined and may touch the network; an
+        # unreachable provider must not block a model switch that is otherwise local.
         except Exception:
             caps = None
         if (
@@ -1379,6 +1381,8 @@ class TurnEngine:
                         "reason": "user approved via the deny card (one-shot, exact action)",
                     }
                 )
+            # Wide on purpose: the audit sink is a callback; a broken sink must not fail
+            # the approval the user just gave.
             except Exception:
                 pass
 
@@ -1787,6 +1791,9 @@ class TurnEngine:
                 arguments_chars=_trajectory.json_size(tool_call.arguments),
             )
             result = self.registry.execute(tool_call.name, tool_call.arguments)
+        # Wide on purpose: a tool can raise anything (provider error, subprocess failure,
+        # user code). The turn must record a failed tool result and keep going; narrowing
+        # this would turn one broken tool into a dead session.
         except Exception as exc:
             duration = int((time.monotonic() - started) * 1000)
             self._tool_spans[tool_call.id] = duration
