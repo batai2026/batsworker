@@ -371,12 +371,43 @@ def _temp_dir() -> Path:
 DEFAULT_MAX_BYTES_RATIO = 0.10
 
 
+def _resolve_cell_baseline(
+    baseline: dict[str, Any], harness: str, model: str
+) -> dict[str, Any] | None:
+    """从一个基线里取出与该 cell 对应的逐 turn 记录。
+
+    两种基线形态都认：
+
+    * **扁平**（`turns` 列表）——stub 黄金用例，一个基线只对应一个确定性模型；
+    * **按 cell**（`cells` 列表）——真实模型矩阵，一个文件里存多个模型各自的记录。
+
+    真实模型之间的字节量差得很远（同一轮 9131 vs 5660），拿 stub 基线去卡真实模型
+    只会得到必然失败的比较，所以真实模型必须按 (harness, model) 对齐。
+    """
+    cells = baseline.get("cells")
+    if not isinstance(cells, list):
+        return baseline
+    for cell in cells:
+        if not isinstance(cell, dict):
+            continue
+        if str(cell.get("model") or "") != model:
+            continue
+        cell_harness = str(cell.get("harness") or "")
+        if harness and cell_harness and cell_harness != harness:
+            continue
+        return cell
+    return None
+
+
 def compare_baseline(
     cell: dict[str, Any], baseline: dict[str, Any]
 ) -> list[dict[str, Any]]:
     """把一个 cell 的逐 turn 结果与 capture 基线对齐比较（仅参照，不作断言）。"""
+    base_cell = _resolve_cell_baseline(
+        baseline, str(cell.get("harness") or ""), str(cell.get("model") or "")
+    ) or {}
     base_by_turn: dict[int, dict[str, Any]] = {}
-    for item in baseline.get("turns") or []:
+    for item in base_cell.get("turns") or []:
         try:
             base_by_turn[int(item.get("turn") or 0)] = item
         except (TypeError, ValueError):
@@ -419,12 +450,20 @@ def check_baseline(
     返回 ``{"ok", "max_bytes_ratio", "checked_turns", "failures"}``。
     """
     baseline = report.get("baseline") or {}
-    base_turns = set()
-    for item in baseline.get("turns") or []:
-        try:
-            base_turns.add(int(item.get("turn") or 0))
-        except (TypeError, ValueError):
-            continue
+    per_cell = isinstance(baseline.get("cells"), list)
+
+    def _base_turns(harness: str, model: str) -> tuple[set[int], bool]:
+        """该 cell 在基线里出现的 turn 集合，以及基线里到底有没有这个 cell。"""
+        base_cell = _resolve_cell_baseline(baseline, harness, model)
+        if base_cell is None:
+            return set(), False
+        turns: set[int] = set()
+        for item in base_cell.get("turns") or []:
+            try:
+                turns.add(int(item.get("turn") or 0))
+            except (TypeError, ValueError):
+                continue
+        return turns, True
 
     failures: list[dict[str, Any]] = []
     checked = 0
@@ -439,6 +478,19 @@ def check_baseline(
                     "turn": None,
                     "kind": "cell_error",
                     "detail": cell.get("error") or "",
+                }
+            )
+            continue
+        base_turns, has_cell = _base_turns(harness, model)
+        if per_cell and not has_cell:
+            # 基线是按模型存的，却没有这个模型：新模型必须先录一次基线，不能静默跳过。
+            failures.append(
+                {
+                    "harness": harness,
+                    "model": model,
+                    "turn": None,
+                    "kind": "missing_cell",
+                    "detail": "model absent from this baseline",
                 }
             )
             continue
@@ -544,6 +596,14 @@ def main(argv: Optional[list[str]] = None) -> int:
         help="把 --case 的基线对比作为门禁：漂移即退出码 3（默认仅参照）",
     )
     parser.add_argument(
+        "--baseline-file",
+        default=None,
+        help=(
+            "指定基线文件（默认取 case 目录下的 baseline.json）。真实模型矩阵请指向 "
+            "real-baseline.json：它是按 (harness, model) 存的，能各自比各自"
+        ),
+    )
+    parser.add_argument(
         "--max-bytes-ratio",
         type=float,
         default=DEFAULT_MAX_BYTES_RATIO,
@@ -601,6 +661,18 @@ def main(argv: Optional[list[str]] = None) -> int:
         from .capture import load_case  # 延迟导入：capture 顶层依赖本模块
 
         turns, baseline = load_case(args.case)
+        if args.baseline_file:
+            base_path = Path(args.baseline_file).expanduser()
+            try:
+                baseline = json.loads(base_path.read_text(encoding="utf-8"))
+            except OSError as exc:
+                print(f"cannot read --baseline-file {base_path}: {exc}", file=sys.stderr)
+                return 2
+            except json.JSONDecodeError as exc:
+                print(
+                    f"--baseline-file {base_path} is not valid JSON: {exc}", file=sys.stderr
+                )
+                return 2
         if not turns:
             print(
                 f"no turns found in case {args.case!r} (missing messages.jsonl?)",
@@ -609,7 +681,8 @@ def main(argv: Optional[list[str]] = None) -> int:
             return 2
         if args.check_baseline and baseline is None:
             print(
-                f"no baseline.json found in case {args.case!r}; cannot check baseline",
+                f"no baseline.json found in case {args.case!r} (and no --baseline-file); "
+                "cannot check baseline",
                 file=sys.stderr,
             )
             return 2

@@ -106,6 +106,116 @@ async def test_run_matrix_stub_runs_code_mode(tmp_path):
     assert "run_shell" not in turn["tools"]
 
 
+def test_compare_baseline_picks_the_matching_cell_model():
+    """真实模型基线按 (harness, model) 存，各比各的；不能拿第一个 cell 当全体。"""
+    baseline = {
+        "cells": [
+            {
+                "harness": "minimal",
+                "model": "a:cheap",
+                "turns": [{"turn": 1, "bytes": 100, "tool_calls": 0, "tools": []}],
+            },
+            {
+                "harness": "minimal",
+                "model": "b:strong",
+                "turns": [
+                    {"turn": 1, "bytes": 900, "tool_calls": 1, "tools": ["list_files"]}
+                ],
+            },
+        ]
+    }
+    cell = {
+        "harness": "minimal",
+        "model": "b:strong",
+        "turns": [
+            {"turn": 1, "bytes": 905, "tool_calls": 1, "tool_names": ["list_files"]}
+        ],
+    }
+    (diff,) = matrix.compare_baseline(cell, baseline)
+    assert diff["base_bytes"] == 900
+    assert diff["bytes_delta"] == 5
+    assert diff["tools_match"] is True
+
+
+def test_check_baseline_per_cell_gate_passes_on_a_matching_model():
+    baseline = {
+        "cells": [
+            {
+                "harness": "minimal",
+                "model": "a:cheap",
+                "turns": [{"turn": 1, "bytes": 1000, "tool_calls": 0, "tools": []}],
+            }
+        ]
+    }
+    report = {
+        "baseline": baseline,
+        "cells": [
+            {
+                "harness": "minimal",
+                "model": "a:cheap",
+                "status": "ok",
+                "vs_baseline": [
+                    {
+                        "turn": 1,
+                        "bytes": 1050,
+                        "base_bytes": 1000,
+                        "bytes_delta": 50,
+                        "tool_calls": 0,
+                        "base_tool_calls": 0,
+                        "tools": [],
+                        "base_tools": [],
+                        "tools_match": True,
+                    }
+                ],
+            }
+        ],
+    }
+    gate = matrix.check_baseline(report, max_bytes_ratio=0.10)
+    assert gate["ok"] is True
+    assert gate["checked_turns"] == 1
+
+
+def test_check_baseline_flags_a_model_missing_from_a_per_cell_baseline():
+    """基线里没有这个模型时必须报 missing_cell，而不是静默算通过。"""
+    baseline = {
+        "cells": [
+            {
+                "harness": "minimal",
+                "model": "known:model",
+                "turns": [{"turn": 1, "bytes": 1000, "tool_calls": 0, "tools": []}],
+            }
+        ]
+    }
+    report = {
+        "baseline": baseline,
+        "cells": [
+            {
+                "harness": "minimal",
+                "model": "brand-new:model",
+                "status": "ok",
+                "vs_baseline": [
+                    {
+                        "turn": 1,
+                        "bytes": 1000,
+                        "base_bytes": 0,
+                        "bytes_delta": 1000,
+                        "tool_calls": 0,
+                        "base_tool_calls": 0,
+                        "tools": [],
+                        "base_tools": [],
+                        "tools_match": True,
+                    }
+                ],
+            }
+        ],
+    }
+    gate = matrix.check_baseline(report, max_bytes_ratio=0.10)
+    assert gate["ok"] is False
+    (failure,) = gate["failures"]
+    assert failure["kind"] == "missing_cell"
+    assert failure["model"] == "brand-new:model"
+
+
 @pytest.mark.asyncio
 async def test_run_matrix_records_a_timeout_instead_of_hanging(tmp_path):
     """An unreachable endpoint must land as a `timeout` row, not as silent minutes.
