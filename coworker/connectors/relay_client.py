@@ -414,7 +414,9 @@ class SlackRelayAdapter(BasePlatformAdapter):
                     headers={"Authorization": f"Bearer {token}"},
                 )
             data = resp.json()
-        except Exception:
+        # Slack Web API: a transport failure or a non-JSON body is the recoverable surface here;
+        # the caller treats None as "couldn't ask Slack" and falls back.
+        except (httpx.HTTPError, ValueError):
             return None
         self._note_token_health(team_id, None if data.get("ok") else data.get("error"))
         return data if data.get("ok") else None
