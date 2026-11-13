@@ -7,7 +7,8 @@
   ],
   "models": [
     "scnet:SCNet-Max",
-    "unisound:u2-flash"
+    "unisound:u2-flash",
+    "deepseek:deepseek-v4.1"
   ],
   "harnesses": [
     "minimal"
@@ -143,7 +144,8 @@
           ],
           "tools_match": false
         }
-      ]
+      ],
+      "recorded_at": "2026-11-13T13:08:38"
     },
     {
       "harness": "minimal",
@@ -272,7 +274,134 @@
           ],
           "tools_match": false
         }
-      ]
+      ],
+      "recorded_at": "2026-11-13T13:08:38"
+    },
+    {
+      "harness": "minimal",
+      "model": "deepseek:deepseek-v4.1",
+      "session_id": "eval-minimal-deepseek-deepseek-v4-1-d43daa",
+      "status": "ok",
+      "error": null,
+      "turns": [
+        {
+          "turn": 1,
+          "status": "ok",
+          "duration_s": 2.238,
+          "digest": "9107eede32a09f4c0eaaa883ded25487cf9e62be8dd7dd004f699aa78a0fedd2",
+          "bytes": 2693,
+          "model": "deepseek:deepseek-v4.1",
+          "tools": [
+            "list_files",
+            "write_file",
+            "apply_unified_diff",
+            "apply_patch",
+            "replace_in_file",
+            "read_file",
+            "run_shell",
+            "shell_task_output",
+            "shell_task_kill",
+            "request_directory",
+            "request_tool",
+            "web_search",
+            "web_fetch",
+            "load_skill",
+            "save_skill",
+            "propose_plan"
+          ],
+          "requests": 1,
+          "tool_calls": 0,
+          "tool_names": []
+        },
+        {
+          "turn": 2,
+          "status": "ok",
+          "duration_s": 0.306,
+          "digest": "695c635b53a81db15183f8b3c0c748d3b776e7e47160fc004757ac3cb0801570",
+          "bytes": 2746,
+          "model": "deepseek:deepseek-v4.1",
+          "tools": [
+            "list_files",
+            "write_file",
+            "apply_unified_diff",
+            "apply_patch",
+            "replace_in_file",
+            "read_file",
+            "run_shell",
+            "shell_task_output",
+            "shell_task_kill",
+            "request_directory",
+            "request_tool",
+            "web_search",
+            "web_fetch",
+            "load_skill",
+            "save_skill",
+            "propose_plan"
+          ],
+          "requests": 1,
+          "tool_calls": 0,
+          "tool_names": []
+        }
+      ],
+      "vs_baseline": [
+        {
+          "turn": 1,
+          "bytes": 2693,
+          "base_bytes": 2693,
+          "bytes_delta": 0,
+          "tool_calls": 0,
+          "base_tool_calls": 0,
+          "tools": [],
+          "base_tools": [
+            "list_files",
+            "write_file",
+            "apply_unified_diff",
+            "apply_patch",
+            "replace_in_file",
+            "read_file",
+            "run_shell",
+            "shell_task_output",
+            "shell_task_kill",
+            "request_directory",
+            "request_tool",
+            "web_search",
+            "web_fetch",
+            "load_skill",
+            "save_skill",
+            "propose_plan"
+          ],
+          "tools_match": false
+        },
+        {
+          "turn": 2,
+          "bytes": 2746,
+          "base_bytes": 2746,
+          "bytes_delta": 0,
+          "tool_calls": 0,
+          "base_tool_calls": 0,
+          "tools": [],
+          "base_tools": [
+            "list_files",
+            "write_file",
+            "apply_unified_diff",
+            "apply_patch",
+            "replace_in_file",
+            "read_file",
+            "run_shell",
+            "shell_task_output",
+            "shell_task_kill",
+            "request_directory",
+            "request_tool",
+            "web_search",
+            "web_fetch",
+            "load_skill",
+            "save_skill",
+            "propose_plan"
+          ],
+          "tools_match": false
+        }
+      ],
+      "recorded_at": "2026-11-07T22:09:17"
     }
   ],
   "baseline": {
