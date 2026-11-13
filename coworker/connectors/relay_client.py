@@ -115,6 +115,9 @@ class RelayHub:
         self._transport = self._transport_factory()
         try:
             await self._transport.open()
+        # Protocol boundary: `_transport` is any RelayTransport implementation (the websockets
+        # client today, fakes in tests). A transport's own failure type is not ours to enumerate
+        # — a connect failure must be recorded and retried, not raised into the caller.
         except Exception as exc:
             logger.exception("relay connect failed")
             self.last_error = str(exc) or type(exc).__name__
@@ -131,6 +134,8 @@ class RelayHub:
         while not self._closing:
             try:
                 frame = await self._transport.recv() if self._transport else None
+            # Same Protocol boundary: whatever recv() raises means "no frame", and the loop's
+            # job is to reconnect rather than to die with the socket.
             except Exception:
                 logger.exception("relay recv error")
                 frame = None
@@ -525,9 +530,12 @@ class _WebSocketsTransport:
             return None
 
     async def close(self) -> None:
+        import websockets
+
         if self._ws is not None:
             try:
                 await self._ws.close()
-            except Exception:
+            # A closing socket can only fail with a transport error; anything else is a bug.
+            except (OSError, websockets.exceptions.WebSocketException):
                 pass
             self._ws = None
