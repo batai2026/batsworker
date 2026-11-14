@@ -6,13 +6,15 @@ imports are limited to what the moved code references; everything else resolves 
 
 from __future__ import annotations
 
+from .manager_base import ManagerBase
+
 from typing import Any, Optional
 
 from ..connections import effective as effective_connections
 from ..connectors import connector_list
 
 
-class PersonasMixin:
+class PersonasMixin(ManagerBase):
     # -- signed persona distribution (coworker/personas/distribution.py) --------
 
     def persona_catalog(self, *, force: bool = False) -> dict[str, Any]:
@@ -47,12 +49,23 @@ class PersonasMixin:
         source = entry.get("git_url") or entry.get("dir")
         if not source:
             return {"ok": False, "error": "catalog entry has no source"}
-        result = self.install_from_git(str(source), expected_pubkey=str(entry["pubkey"]))
-        if result and result[0].get("ok") is False:
-            return result[0]
-        if result:
-            result[0]["catalog"] = {"slug": slug, "author": entry.get("author", "")}
-        return result
+        # install_from_git lives on PersonaRegistry, not on the SessionManager facade
+        # (this used to be `self.install_from_git(...)`, which raised AttributeError).
+        try:
+            summaries = self.personas.install_from_git(
+                str(source), expected_pubkey=str(entry["pubkey"])
+            )
+        except Exception as exc:  # clone/signature failures surface to the caller
+            return {"ok": False, "error": str(exc)}
+        if summaries and summaries[0].get("ok") is False:
+            return summaries[0]
+        for summary in summaries or []:
+            summary["catalog"] = {"slug": slug, "author": entry.get("author", "")}
+        return {
+            "ok": True,
+            "consent": summaries,
+            "personas": self.personas.list_all(),
+        }
 
     def list_trusted_keys(self) -> list[dict[str, Any]]:
         from ..personas.distribution import TrustedKeyStore

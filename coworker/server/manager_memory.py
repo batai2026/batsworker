@@ -6,6 +6,8 @@ imports are limited to what the moved code references; everything else resolves 
 
 from __future__ import annotations
 
+from .manager_base import ManagerBase
+
 import asyncio
 from pathlib import Path
 from typing import Any, Optional
@@ -16,7 +18,7 @@ from ..projects import project_key, project_label
 _SCOPES = {s.value for s in Scope}
 
 
-class MemoryMixin:
+class MemoryMixin(ManagerBase):
     def _memory_saved_notifier(self, session_id: str):
         """MEMORY-SPEC §5.1: push the memory_saved event that powers the GUI's save
         toast ("I'll remember that — … [Undo]"). Best-effort by design: `remember` may

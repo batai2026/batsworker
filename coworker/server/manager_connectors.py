@@ -6,6 +6,8 @@ imports are limited to what the moved code references; everything else resolves 
 
 from __future__ import annotations
 
+from .manager_base import ManagerBase
+
 import asyncio
 import json
 import logging
@@ -36,7 +38,7 @@ from .manager_helpers import _inbound_epoch
 logger = logging.getLogger("coworker.manager")
 
 
-class ConnectorsMixin:
+class ConnectorsMixin(ManagerBase):
     # -- connectors -------------------------------------------------------------
     def list_connectors(self) -> list[dict[str, Any]]:
         # Enrich two-way connectors with the live gateway's recently-seen senders, so the Connectors
