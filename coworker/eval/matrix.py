@@ -191,6 +191,13 @@ def _requests_by_turn(records: list[dict[str, Any]]) -> dict[int, dict[str, int]
             turn = 0
         data = row.get("data") or {}
         slot = out.setdefault(turn, {"requests": 0, "bytes": 0})
+        if slot["requests"] == 0:
+            # 本轮第一次请求的字节量 = 我们构造的提示 + 工具定义，与模型接下来调不调
+            # 工具无关。这是真实模型矩阵里唯一“由我们控制”的那个数。
+            try:
+                slot["first_bytes"] = int(data.get("bytes") or 0)
+            except (TypeError, ValueError):
+                slot["first_bytes"] = 0
         slot["requests"] += 1
         try:
             slot["bytes"] += int(data.get("bytes") or 0)
@@ -300,6 +307,7 @@ async def _run_cell(
         item["model"] = data.get("model", "")
         item["tools"] = data.get("tools", [])
         item["requests"] = data.get("requests", 0)
+        item["first_bytes"] = data.get("first_bytes", 0)
         names = tool_calls.get(int(item["turn"]) or 0, [])
         item["tool_calls"] = len(names)
         item["tool_names"] = names
@@ -459,12 +467,17 @@ def compare_baseline(
         tools = list(item.get("tool_names") or [])
         base_bytes = int(base.get("bytes") or 0)
         bytes_now = int(item.get("bytes") or 0)
+        base_first = int(base.get("first_bytes") or 0)
+        first_now = int(item.get("first_bytes") or 0)
         diffs.append(
             {
                 "turn": turn,
                 "bytes": bytes_now,
                 "base_bytes": base_bytes,
                 "bytes_delta": bytes_now - base_bytes,
+                "first_bytes": first_now,
+                "base_first_bytes": base_first,
+                "first_delta": first_now - base_first,
                 "tool_calls": int(item.get("tool_calls") or 0),
                 "base_tool_calls": int(base.get("tool_calls") or 0),
                 "tools": tools,
@@ -547,6 +560,10 @@ def check_baseline(
                     }
                 )
                 continue
+            if session_shape:
+                # 真实模型「调不调工具、几轮请求」是模型选择，不是我们的回归：只留在
+                # vs_baseline 里当观测值，不作门禁（deepseek 就时不时整轮不调工具）。
+                continue
             if not diff.get("tools_match"):
                 failures.append(
                     {
@@ -560,11 +577,6 @@ def check_baseline(
                         },
                     }
                 )
-            if session_shape:
-                # 真实模型把同一次会话切成几轮，工具结果落在哪一轮不稳定：实测同一个用例
-                # SCNet 两轮从 9061/3764 变成 5663/7182，而总量只差 20 字节（0.16%）。
-                # 这种形态下逐轮比字节只会误报，改在循环后按会话总量比一次。
-                continue
             base_bytes = int(diff.get("base_bytes") or 0)
             delta = int(diff.get("bytes_delta") or 0)
             if base_bytes > 0:
@@ -587,25 +599,46 @@ def check_baseline(
                     }
                 )
         if session_shape:
-            got = sum(int(d.get("bytes") or 0) for d in cell.get("vs_baseline") or [])
-            want = sum(int(d.get("base_bytes") or 0) for d in cell.get("vs_baseline") or [])
-            ratio = abs(got - want) / want if want > 0 else float(abs(got - want))
-            if ratio > max_bytes_ratio:
-                failures.append(
-                    {
-                        "harness": harness,
-                        "model": model,
-                        "turn": None,
-                        "kind": "bytes_drift",
-                        "detail": {
-                            "scope": "session",
-                            "bytes": got,
-                            "base_bytes": want,
-                            "delta": got - want,
-                            "ratio": round(ratio, 4),
-                        },
-                    }
-                )
+            # 真实模型矩阵只门禁「我们控制的东西」：第一轮第一次请求的字节量，它等于
+            # 系统提示 + 环境块 + 工具定义 + 用户输入，与模型接下来调不调工具无关。
+            # 会话总量、工具调用序列都是模型选择，留在 vs_baseline 里做观测值。
+            first = next(
+                (d for d in cell.get("vs_baseline") or [] if d.get("turn") == 1), None
+            )
+            if first is not None:
+                got = int(first.get("first_bytes") or 0)
+                want = int(first.get("base_first_bytes") or 0)
+                if want <= 0:
+                    failures.append(
+                        {
+                            "harness": harness,
+                            "model": model,
+                            "turn": 1,
+                            "kind": "missing_prompt_bytes",
+                            "detail": (
+                                "baseline carries no first_bytes for turn 1 "
+                                "(recorded before prompt-byte tracking); re-record it"
+                            ),
+                        }
+                    )
+                else:
+                    ratio = abs(got - want) / want
+                    if ratio > max_bytes_ratio:
+                        failures.append(
+                            {
+                                "harness": harness,
+                                "model": model,
+                                "turn": 1,
+                                "kind": "prompt_drift",
+                                "detail": {
+                                    "scope": "prompt",
+                                    "bytes": got,
+                                    "base_bytes": want,
+                                    "delta": got - want,
+                                    "ratio": round(ratio, 4),
+                                },
+                            }
+                        )
     return {
         "ok": not failures,
         "max_bytes_ratio": max_bytes_ratio,

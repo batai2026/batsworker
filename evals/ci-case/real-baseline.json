@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-11-14T02:02:52",
+  "generated_at": "2026-11-14T03:32:59",
   "workspace": "/home/runner/work/_temp/eval-ws",
   "turns": [
     1,
@@ -20,16 +20,16 @@
     {
       "harness": "minimal",
       "model": "scnet:SCNet-Max",
-      "session_id": "eval-minimal-scnet-scnet-max-6ff4d7",
+      "session_id": "eval-minimal-scnet-scnet-max-0104d3",
       "status": "ok",
       "error": null,
       "turns": [
         {
           "turn": 1,
           "status": "ok",
-          "duration_s": 9.222,
-          "digest": "e4014fb4de0af0417b13c56f0999a20409988da4fcc2106b5c4bafa007f85cd9",
-          "bytes": 9061,
+          "duration_s": 9.554,
+          "digest": "15f14c74dce15ab57a147f9f1a23cc418aee305597026cf03a83fa9a390c35e0",
+          "bytes": 6196,
           "model": "scnet:SCNet-Max",
           "tools": [
             "list_files",
@@ -49,18 +49,20 @@
             "save_skill",
             "propose_plan"
           ],
-          "requests": 3,
-          "tool_calls": 1,
+          "requests": 2,
+          "tool_calls": 2,
           "tool_names": [
-            "list_files"
-          ]
+            "list_files",
+            "read_file"
+          ],
+          "first_bytes": 2752
         },
         {
           "turn": 2,
           "status": "ok",
-          "duration_s": 4.429,
-          "digest": "a9a59bd5a27195f5b6d6ee8fdbc6e99f380e9ddc20cfe4e5a21f5838e5c77b82",
-          "bytes": 3764,
+          "duration_s": 2.537,
+          "digest": "57d588ec71f0ae2a0a2c8c6c9e14953676e3e1c90b64b5bd9c2d08a972c5f4b7",
+          "bytes": 3702,
           "model": "scnet:SCNet-Max",
           "tools": [
             "list_files",
@@ -82,115 +84,61 @@
           ],
           "requests": 1,
           "tool_calls": 0,
-          "tool_names": []
+          "tool_names": [],
+          "first_bytes": 3702
         }
       ],
       "vs_baseline": [
         {
           "turn": 1,
-          "bytes": 9061,
-          "base_bytes": 9061,
+          "bytes": 6196,
+          "base_bytes": 6196,
           "bytes_delta": 0,
-          "tool_calls": 1,
-          "base_tool_calls": 1,
+          "first_bytes": 2752,
+          "base_first_bytes": 2752,
+          "first_delta": 0,
+          "tool_calls": 2,
+          "base_tool_calls": 2,
           "tools": [
-            "list_files"
+            "list_files",
+            "read_file"
           ],
           "base_tools": [
             "list_files",
-            "write_file",
-            "apply_unified_diff",
-            "apply_patch",
-            "replace_in_file",
-            "read_file",
-            "run_shell",
-            "shell_task_output",
-            "shell_task_kill",
-            "request_directory",
-            "request_tool",
-            "web_search",
-            "web_fetch",
-            "load_skill",
-            "save_skill",
-            "propose_plan"
+            "read_file"
           ],
-          "tools_match": false
+          "tools_match": true
         },
         {
           "turn": 2,
-          "bytes": 3764,
-          "base_bytes": 3764,
+          "bytes": 3702,
+          "base_bytes": 3702,
           "bytes_delta": 0,
+          "first_bytes": 3702,
+          "base_first_bytes": 3702,
+          "first_delta": 0,
           "tool_calls": 0,
           "base_tool_calls": 0,
           "tools": [],
-          "base_tools": [
-            "list_files",
-            "write_file",
-            "apply_unified_diff",
-            "apply_patch",
-            "replace_in_file",
-            "read_file",
-            "run_shell",
-            "shell_task_output",
-            "shell_task_kill",
-            "request_directory",
-            "request_tool",
-            "web_search",
-            "web_fetch",
-            "load_skill",
-            "save_skill",
-            "propose_plan"
-          ],
-          "tools_match": false
+          "base_tools": [],
+          "tools_match": true
         }
       ],
-      "recorded_at": "2026-11-14T02:02:52"
+      "recorded_at": "2026-11-14T03:32:59"
     },
     {
       "harness": "minimal",
       "model": "unisound:u2-flash",
-      "session_id": "eval-minimal-unisound-u2-flash-202a10",
+      "session_id": "eval-minimal-unisound-u2-flash-ec0cba",
       "status": "ok",
       "error": null,
       "turns": [
         {
           "turn": 1,
           "status": "ok",
-          "duration_s": 4.238,
-          "digest": "482b095fd716ba4b002fb77f665eef2327fd0431d749e619a591b328094e37f6",
-          "bytes": 5639,
-          "model": "unisound:u2-flash",
-          "tools": [
-            "list_files",
-            "write_file",
-            "apply_unified_diff",
-            "apply_patch",
-            "replace_in_file",
-            "read_file",
-            "run_shell",
-            "shell_task_output",
-            "shell_task_kill",
-            "request_directory",
-            "request_tool",
-            "web_search",
-            "web_fetch",
-            "load_skill",
-            "save_skill",
-            "propose_plan"
-          ],
-          "requests": 2,
-          "tool_calls": 1,
-          "tool_names": [
-            "list_files"
-          ]
-        },
-        {
-          "turn": 2,
-          "status": "ok",
-          "duration_s": 2.754,
-          "digest": "1230ccf1f4658d7e6e26535c224d74649d245938026348895fa9da9d9b22e955",
-          "bytes": 3108,
+          "duration_s": 2.085,
+          "digest": "13ad877a9e4688df8de72620b466c43181f5acde135dadbc368b0defd705ab8f",
+          "bytes": 2752,
           "model": "unisound:u2-flash",
           "tools": [
             "list_files",
@@ -212,115 +160,97 @@
           ],
           "requests": 1,
           "tool_calls": 0,
-          "tool_names": []
+          "tool_names": [],
+          "first_bytes": 2752
+        },
+        {
+          "turn": 2,
+          "status": "ok",
+          "duration_s": 12.413,
+          "digest": "7ca869b28f6858dbfeea3d89b815ac35e3d0343404315efb5857640220c60c1f",
+          "bytes": 13600,
+          "model": "unisound:u2-flash",
+          "tools": [
+            "list_files",
+            "write_file",
+            "apply_unified_diff",
+            "apply_patch",
+            "replace_in_file",
+            "read_file",
+            "run_shell",
+            "shell_task_output",
+            "shell_task_kill",
+            "request_directory",
+            "request_tool",
+            "web_search",
+            "web_fetch",
+            "load_skill",
+            "save_skill",
+            "propose_plan"
+          ],
+          "requests": 4,
+          "tool_calls": 3,
+          "tool_names": [
+            "list_files",
+            "list_files",
+            "read_file"
+          ],
+          "first_bytes": 0
         }
       ],
       "vs_baseline": [
         {
           "turn": 1,
-          "bytes": 5639,
-          "base_bytes": 5639,
+          "bytes": 2752,
+          "base_bytes": 2752,
           "bytes_delta": 0,
-          "tool_calls": 1,
-          "base_tool_calls": 1,
-          "tools": [
-            "list_files"
-          ],
-          "base_tools": [
-            "list_files",
-            "write_file",
-            "apply_unified_diff",
-            "apply_patch",
-            "replace_in_file",
-            "read_file",
-            "run_shell",
-            "shell_task_output",
-            "shell_task_kill",
-            "request_directory",
-            "request_tool",
-            "web_search",
-            "web_fetch",
-            "load_skill",
-            "save_skill",
-            "propose_plan"
-          ],
-          "tools_match": false
-        },
-        {
-          "turn": 2,
-          "bytes": 3108,
-          "base_bytes": 3108,
-          "bytes_delta": 0,
+          "first_bytes": 2752,
+          "base_first_bytes": 2752,
+          "first_delta": 0,
           "tool_calls": 0,
           "base_tool_calls": 0,
           "tools": [],
+          "base_tools": [],
+          "tools_match": true
+        },
+        {
+          "turn": 2,
+          "bytes": 13600,
+          "base_bytes": 13600,
+          "bytes_delta": 0,
+          "first_bytes": 0,
+          "base_first_bytes": 0,
+          "first_delta": 0,
+          "tool_calls": 3,
+          "base_tool_calls": 3,
+          "tools": [
+            "list_files",
+            "list_files",
+            "read_file"
+          ],
           "base_tools": [
             "list_files",
-            "write_file",
-            "apply_unified_diff",
-            "apply_patch",
-            "replace_in_file",
-            "read_file",
-            "run_shell",
-            "shell_task_output",
-            "shell_task_kill",
-            "request_directory",
-            "request_tool",
-            "web_search",
-            "web_fetch",
-            "load_skill",
-            "save_skill",
-            "propose_plan"
+            "list_files",
+            "read_file"
           ],
-          "tools_match": false
+          "tools_match": true
         }
       ],
-      "recorded_at": "2026-11-14T02:02:52"
+      "recorded_at": "2026-11-14T03:32:59"
     },
     {
       "harness": "minimal",
       "model": "deepseek:deepseek-v4-pro",
-      "session_id": "eval-minimal-deepseek-deepseek-v4-pro-89a16c",
+      "session_id": "eval-minimal-deepseek-deepseek-v4-pro-266fab",
       "status": "ok",
       "error": null,
       "turns": [
         {
           "turn": 1,
           "status": "ok",
-          "duration_s": 3.155,
-          "digest": "bc2ce56a979671e4eae6eaf5373433a10d63411daea4baad4682a9c1636eab38",
-          "bytes": 5662,
-          "model": "deepseek:deepseek-v4-pro",
-          "tools": [
-            "list_files",
-            "write_file",
-            "apply_unified_diff",
-            "apply_patch",
-            "replace_in_file",
-            "read_file",
-            "run_shell",
-            "shell_task_output",
-            "shell_task_kill",
-            "request_directory",
-            "request_tool",
-            "web_search",
-            "web_fetch",
-            "load_skill",
-            "save_skill",
-            "propose_plan"
-          ],
-          "requests": 2,
-          "tool_calls": 1,
-          "tool_names": [
-            "list_files"
-          ]
-        },
-        {
-          "turn": 2,
-          "status": "ok",
-          "duration_s": 1.767,
-          "digest": "e0641dde9c0b9619d27ae295045c3ce61d0bb72d47b80a2e1c8182383cd18d2e",
-          "bytes": 3142,
+          "duration_s": 0.832,
+          "digest": "13ad877a9e4688df8de72620b466c43181f5acde135dadbc368b0defd705ab8f",
+          "bytes": 2752,
           "model": "deepseek:deepseek-v4-pro",
           "tools": [
             "list_files",
@@ -342,80 +272,81 @@
           ],
           "requests": 1,
           "tool_calls": 0,
-          "tool_names": []
+          "tool_names": [],
+          "first_bytes": 2752
+        },
+        {
+          "turn": 2,
+          "status": "ok",
+          "duration_s": 0.623,
+          "digest": "ea662564956441ec53335e23d66c280d3b0d767057bd45fd43cc6ff87ef0b44f",
+          "bytes": 2821,
+          "model": "deepseek:deepseek-v4-pro",
+          "tools": [
+            "list_files",
+            "write_file",
+            "apply_unified_diff",
+            "apply_patch",
+            "replace_in_file",
+            "read_file",
+            "run_shell",
+            "shell_task_output",
+            "shell_task_kill",
+            "request_directory",
+            "request_tool",
+            "web_search",
+            "web_fetch",
+            "load_skill",
+            "save_skill",
+            "propose_plan"
+          ],
+          "requests": 1,
+          "tool_calls": 0,
+          "tool_names": [],
+          "first_bytes": 2821
         }
       ],
       "vs_baseline": [
         {
           "turn": 1,
-          "bytes": 5662,
-          "base_bytes": 5662,
+          "bytes": 2752,
+          "base_bytes": 2752,
           "bytes_delta": 0,
-          "tool_calls": 1,
-          "base_tool_calls": 1,
-          "tools": [
-            "list_files"
-          ],
-          "base_tools": [
-            "list_files",
-            "write_file",
-            "apply_unified_diff",
-            "apply_patch",
-            "replace_in_file",
-            "read_file",
-            "run_shell",
-            "shell_task_output",
-            "shell_task_kill",
-            "request_directory",
-            "request_tool",
-            "web_search",
-            "web_fetch",
-            "load_skill",
-            "save_skill",
-            "propose_plan"
-          ],
-          "tools_match": false
-        },
-        {
-          "turn": 2,
-          "bytes": 3142,
-          "base_bytes": 3142,
-          "bytes_delta": 0,
+          "first_bytes": 2752,
+          "base_first_bytes": 2752,
+          "first_delta": 0,
           "tool_calls": 0,
           "base_tool_calls": 0,
           "tools": [],
-          "base_tools": [
-            "list_files",
-            "write_file",
-            "apply_unified_diff",
-            "apply_patch",
-            "replace_in_file",
-            "read_file",
-            "run_shell",
-            "shell_task_output",
-            "shell_task_kill",
-            "request_directory",
-            "request_tool",
-            "web_search",
-            "web_fetch",
-            "load_skill",
-            "save_skill",
-            "propose_plan"
-          ],
-          "tools_match": false
+          "base_tools": [],
+          "tools_match": true
+        },
+        {
+          "turn": 2,
+          "bytes": 2821,
+          "base_bytes": 2821,
+          "bytes_delta": 0,
+          "first_bytes": 2821,
+          "base_first_bytes": 2821,
+          "first_delta": 0,
+          "tool_calls": 0,
+          "base_tool_calls": 0,
+          "tools": [],
+          "base_tools": [],
+          "tools_match": true
         }
       ],
-      "recorded_at": "2026-11-14T02:02:52"
+      "recorded_at": "2026-11-14T03:32:59"
     }
   ],
   "baseline": {
     "session_id": "ci-case",
-    "captured_at": "2026-11-13T23:19:10",
+    "captured_at": "2026-11-14T11:22:48",
     "turns": [
       {
         "turn": 1,
         "model": "stub:model",
-        "bytes": 2748,
+        "bytes": 2807,
         "requests": 1,
         "tool_calls": 0,
         "tools": []
@@ -423,7 +354,7 @@
       {
         "turn": 2,
         "model": "stub:model",
-        "bytes": 2837,
+        "bytes": 2912,
         "requests": 1,
         "tool_calls": 0,
         "tools": []

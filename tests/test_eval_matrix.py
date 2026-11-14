@@ -210,75 +210,102 @@ def test_compare_baseline_prefers_tool_names_in_a_report_shaped_baseline():
     assert diff["tools_match"] is True
 
 
-def _session_report(now_turn1, now_turn2, *, base=(9061, 3764)):
-    base1, base2 = base
-    baseline = {
-        "cells": [
-            {
-                "harness": "minimal",
-                "model": "scnet:SCNet-Max",
-                "turns": [
-                    {
-                        "turn": 1,
-                        "bytes": base1,
-                        "tool_calls": 1,
-                        "tools": _MODEL_TOOLS,
-                        "tool_names": ["list_files"],
-                    },
-                    {
-                        "turn": 2,
-                        "bytes": base2,
-                        "tool_calls": 0,
-                        "tools": _MODEL_TOOLS,
-                        "tool_names": [],
-                    },
-                ],
-            }
-        ]
-    }
+def _prompt_report(
+    first_now,
+    *,
+    base_first=2803,
+    bytes_now=6196,
+    tools_now=("list_files",),
+    with_base_first=True,
+):
+    """造一份报告形态的 cell：基线带 first_bytes，本次带的 first_bytes 可调。"""
+    base_turns = [
+        {
+            "turn": 1,
+            "bytes": base_first,
+            "tool_calls": 1,
+            "tools": _MODEL_TOOLS,
+            "tool_names": ["list_files"],
+        },
+        {
+            "turn": 2,
+            "bytes": 3702,
+            "tool_calls": 0,
+            "tools": _MODEL_TOOLS,
+            "tool_names": [],
+        },
+    ]
+    if with_base_first:
+        for turn in base_turns:
+            turn["first_bytes"] = turn["bytes"]
 
-    def diff(turn, now, base_bytes, tools):
+    def diff(turn, now, base_bytes, tools, base_tools, first, base_first_value):
         return {
             "turn": turn,
             "bytes": now,
             "base_bytes": base_bytes,
             "bytes_delta": now - base_bytes,
+            "first_bytes": first,
+            "base_first_bytes": base_first_value if with_base_first else 0,
+            "first_delta": first - base_first_value,
             "tool_calls": len(tools),
-            "base_tool_calls": len(tools),
-            "tools": tools,
-            "base_tools": tools,
-            "tools_match": True,
+            "base_tool_calls": len(base_tools),
+            "tools": list(tools),
+            "base_tools": list(base_tools),
+            "tools_match": list(tools) == list(base_tools),
         }
 
     return {
-        "baseline": baseline,
+        "baseline": {
+            "cells": [
+                {"harness": "minimal", "model": "scnet:SCNet-Max", "turns": base_turns}
+            ]
+        },
         "cells": [
             {
                 "harness": "minimal",
                 "model": "scnet:SCNet-Max",
                 "status": "ok",
                 "vs_baseline": [
-                    diff(1, now_turn1, base1, ["list_files"]),
-                    diff(2, now_turn2, base2, []),
+                    diff(
+                        1,
+                        bytes_now,
+                        base_first,
+                        tools_now,
+                        ["list_files"],
+                        first_now,
+                        base_first,
+                    ),
+                    diff(2, 2821, 3702, [], [], 2821, 3702),
                 ],
             }
         ],
     }
 
 
-def test_check_baseline_uses_session_totals_for_report_shaped_cells():
-    """真实模型把工具结果放在哪一轮不稳定：SCNet 两轮从 9061/3764 摆到 5663/7182，
-    总量只差 20 字节。逐轮比只会误报，所以报告形态改比会话总量。"""
-    gate = matrix.check_baseline(_session_report(5663, 7182), max_bytes_ratio=0.10)
+def test_check_baseline_gates_prompt_bytes_not_model_behaviour():
+    """同一个用例，三家的工具调用与总量差很多，但第一轮第一次请求的字节量相同——
+    那才是我们构造的东西（提示 + 环境块 + 工具定义），模型选择只作观测。"""
+    report = _prompt_report(2752, bytes_now=16352, tools_now=())
+    gate = matrix.check_baseline(report, max_bytes_ratio=0.10)
     assert gate["ok"] is True, gate["failures"]
 
 
-def test_check_baseline_fails_a_session_total_beyond_the_ratio():
-    gate = matrix.check_baseline(_session_report(7000, 3764), max_bytes_ratio=0.10)
+def test_check_baseline_fails_prompt_drift():
+    gate = matrix.check_baseline(_prompt_report(3300), max_bytes_ratio=0.10)
     assert gate["ok"] is False
     (failure,) = gate["failures"]
-    assert failure["kind"] == "bytes_drift"
-    assert failure["detail"]["scope"] == "session"
+    assert failure["kind"] == "prompt_drift"
+    assert failure["detail"]["scope"] == "prompt"
+
+
+def test_check_baseline_asks_for_a_re_record_without_prompt_bytes():
+    """旧基线没有 first_bytes时必须显式报错，而不是静默算绿。"""
+    report = _prompt_report(2752, with_base_first=False)
+    gate = matrix.check_baseline(report, max_bytes_ratio=0.10)
+    assert gate["ok"] is False
+    (failure,) = gate["failures"]
+    assert failure["kind"] == "missing_prompt_bytes"
 
 
 def test_check_baseline_per_cell_gate_passes_on_a_matching_model():
