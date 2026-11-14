@@ -113,3 +113,6 @@ Please note that we are actively developing based off a internal list and goal, 
 ## License
 
 MIT - see [LICENSE](LICENSE).
+
+Security reports: see [SECURITY.md](SECURITY.md) for the private disclosure
+channel, supported versions, and scope. Release notes: [CHANGELOG.md](CHANGELOG.md).
