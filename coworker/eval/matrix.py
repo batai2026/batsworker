@@ -427,7 +427,12 @@ def compare_baseline(
         except (TypeError, ValueError):
             continue
         base = base_by_turn.get(turn) or {}
-        base_tools = list(base.get("tools") or [])
+        # 两种基线形态：capture/stub 把「实际调用名」放在 tools；真实模型报告把模型面工具
+        # 列表（16 个）放在 tools、实际调用名放在 tool_names。用错就把工具清单当成调用
+        # 序列，于是每一个 turn 都误报 tool_drift。
+        base_tools = list(
+            base["tool_names"] if "tool_names" in base else (base.get("tools") or [])
+        )
         # 对比的是实际发生的 tool_call 名称序列（tool_names），不是模型面工具列表
         # （tools 由 harness 决定，与录制时不同不算偏差）。
         tools = list(item.get("tool_names") or [])
@@ -490,6 +495,11 @@ def check_baseline(
             )
             continue
         base_turns, has_cell = _base_turns(harness, model)
+        base_cell = _resolve_cell_baseline(baseline, harness, model) or {}
+        # 真实模型报告形态：turn 里带 tool_names。用它的基线不能逐轮比字节（见下）。
+        session_shape = any(
+            "tool_names" in (item or {}) for item in (base_cell.get("turns") or [])
+        )
         if per_cell and not has_cell:
             # 基线是按模型存的，却没有这个模型：新模型必须先录一次基线，不能静默跳过。
             failures.append(
@@ -529,6 +539,11 @@ def check_baseline(
                         },
                     }
                 )
+            if session_shape:
+                # 真实模型把同一次会话切成几轮，工具结果落在哪一轮不稳定：实测同一个用例
+                # SCNet 两轮从 9061/3764 变成 5663/7182，而总量只差 20 字节（0.16%）。
+                # 这种形态下逐轮比字节只会误报，改在循环后按会话总量比一次。
+                continue
             base_bytes = int(diff.get("base_bytes") or 0)
             delta = int(diff.get("bytes_delta") or 0)
             if base_bytes > 0:
@@ -546,6 +561,26 @@ def check_baseline(
                             "bytes": diff.get("bytes"),
                             "base_bytes": base_bytes,
                             "delta": delta,
+                            "ratio": round(ratio, 4),
+                        },
+                    }
+                )
+        if session_shape:
+            got = sum(int(d.get("bytes") or 0) for d in cell.get("vs_baseline") or [])
+            want = sum(int(d.get("base_bytes") or 0) for d in cell.get("vs_baseline") or [])
+            ratio = abs(got - want) / want if want > 0 else float(abs(got - want))
+            if ratio > max_bytes_ratio:
+                failures.append(
+                    {
+                        "harness": harness,
+                        "model": model,
+                        "turn": None,
+                        "kind": "bytes_drift",
+                        "detail": {
+                            "scope": "session",
+                            "bytes": got,
+                            "base_bytes": want,
+                            "delta": got - want,
                             "ratio": round(ratio, 4),
                         },
                     }

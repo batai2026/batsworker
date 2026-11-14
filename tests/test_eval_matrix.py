@@ -144,6 +144,113 @@ def test_compare_baseline_picks_the_matching_cell_model():
     assert diff["tools_match"] is True
 
 
+_MODEL_TOOLS = ["list_files", "write_file", "read_file"]  # 模型面工具清单（报告里的 tools）
+
+
+def test_compare_baseline_prefers_tool_names_in_a_report_shaped_baseline():
+    """报告形态的基线里 tools 是工具清单、tool_names 才是调用序列。
+
+    混用会把 16 个工具当成一次调用的名字序列，于是每个 turn 都误报 tool_drift——
+    2026-11-14 那次 check_baseline=1 的 CI 就因为这个出了 8 条假失败。
+    """
+    baseline = {
+        "cells": [
+            {
+                "harness": "minimal",
+                "model": "m:1",
+                "turns": [
+                    {
+                        "turn": 1,
+                        "bytes": 5662,
+                        "tool_calls": 1,
+                        "tools": _MODEL_TOOLS,
+                        "tool_names": ["list_files"],
+                    }
+                ],
+            }
+        ]
+    }
+    cell = {
+        "harness": "minimal",
+        "model": "m:1",
+        "turns": [{"turn": 1, "bytes": 5684, "tool_names": ["list_files"]}],
+    }
+    (diff,) = matrix.compare_baseline(cell, baseline)
+    assert diff["base_tools"] == ["list_files"]
+    assert diff["tools_match"] is True
+
+
+def _session_report(now_turn1, now_turn2, *, base=(9061, 3764)):
+    base1, base2 = base
+    baseline = {
+        "cells": [
+            {
+                "harness": "minimal",
+                "model": "scnet:SCNet-Max",
+                "turns": [
+                    {
+                        "turn": 1,
+                        "bytes": base1,
+                        "tool_calls": 1,
+                        "tools": _MODEL_TOOLS,
+                        "tool_names": ["list_files"],
+                    },
+                    {
+                        "turn": 2,
+                        "bytes": base2,
+                        "tool_calls": 0,
+                        "tools": _MODEL_TOOLS,
+                        "tool_names": [],
+                    },
+                ],
+            }
+        ]
+    }
+
+    def diff(turn, now, base_bytes, tools):
+        return {
+            "turn": turn,
+            "bytes": now,
+            "base_bytes": base_bytes,
+            "bytes_delta": now - base_bytes,
+            "tool_calls": len(tools),
+            "base_tool_calls": len(tools),
+            "tools": tools,
+            "base_tools": tools,
+            "tools_match": True,
+        }
+
+    return {
+        "baseline": baseline,
+        "cells": [
+            {
+                "harness": "minimal",
+                "model": "scnet:SCNet-Max",
+                "status": "ok",
+                "vs_baseline": [
+                    diff(1, now_turn1, base1, ["list_files"]),
+                    diff(2, now_turn2, base2, []),
+                ],
+            }
+        ],
+    }
+
+
+def test_check_baseline_uses_session_totals_for_report_shaped_cells():
+    """真实模型把工具结果放在哪一轮不稳定：SCNet 两轮从 9061/3764 摆到 5663/7182，
+    总量只差 20 字节。逐轮比只会误报，所以报告形态改比会话总量。"""
+    gate = matrix.check_baseline(_session_report(5663, 7182), max_bytes_ratio=0.10)
+    assert gate["ok"] is True, gate["failures"]
+
+
+def test_check_baseline_fails_a_session_total_beyond_the_ratio():
+    gate = matrix.check_baseline(_session_report(7000, 3764), max_bytes_ratio=0.10)
+    assert gate["ok"] is False
+    (failure,) = gate["failures"]
+    assert failure["kind"] == "bytes_drift"
+    assert failure["detail"]["scope"] == "session"
+
+
 def test_check_baseline_per_cell_gate_passes_on_a_matching_model():
     baseline = {
         "cells": [
