@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-11-13T13:08:38",
+  "generated_at": "2026-11-14T02:02:52",
   "workspace": "/home/runner/work/_temp/eval-ws",
   "turns": [
     1,
@@ -8,7 +8,7 @@
   "models": [
     "scnet:SCNet-Max",
     "unisound:u2-flash",
-    "deepseek:deepseek-v4.1"
+    "deepseek:deepseek-v4-pro"
   ],
   "harnesses": [
     "minimal"
@@ -20,16 +20,16 @@
     {
       "harness": "minimal",
       "model": "scnet:SCNet-Max",
-      "session_id": "eval-minimal-scnet-scnet-max-41b3d1",
+      "session_id": "eval-minimal-scnet-scnet-max-6ff4d7",
       "status": "ok",
       "error": null,
       "turns": [
         {
           "turn": 1,
           "status": "ok",
-          "duration_s": 11.727,
-          "digest": "e7c4e3a1595e092e634806680f3c878f97f96403bf788c3560cb0ca1caba99b4",
-          "bytes": 9109,
+          "duration_s": 9.222,
+          "digest": "e4014fb4de0af0417b13c56f0999a20409988da4fcc2106b5c4bafa007f85cd9",
+          "bytes": 9061,
           "model": "scnet:SCNet-Max",
           "tools": [
             "list_files",
@@ -58,9 +58,9 @@
         {
           "turn": 2,
           "status": "ok",
-          "duration_s": 4.177,
-          "digest": "613e7f0ebbd0e1197303649d6ce1387e1da61a34ea9bf2697bacb3ce423249a0",
-          "bytes": 3915,
+          "duration_s": 4.429,
+          "digest": "a9a59bd5a27195f5b6d6ee8fdbc6e99f380e9ddc20cfe4e5a21f5838e5c77b82",
+          "bytes": 3764,
           "model": "scnet:SCNet-Max",
           "tools": [
             "list_files",
@@ -88,8 +88,8 @@
       "vs_baseline": [
         {
           "turn": 1,
-          "bytes": 9109,
-          "base_bytes": 9109,
+          "bytes": 9061,
+          "base_bytes": 9061,
           "bytes_delta": 0,
           "tool_calls": 1,
           "base_tool_calls": 1,
@@ -118,8 +118,8 @@
         },
         {
           "turn": 2,
-          "bytes": 3915,
-          "base_bytes": 3915,
+          "bytes": 3764,
+          "base_bytes": 3764,
           "bytes_delta": 0,
           "tool_calls": 0,
           "base_tool_calls": 0,
@@ -145,21 +145,21 @@
           "tools_match": false
         }
       ],
-      "recorded_at": "2026-11-13T13:08:38"
+      "recorded_at": "2026-11-14T02:02:52"
     },
     {
       "harness": "minimal",
       "model": "unisound:u2-flash",
-      "session_id": "eval-minimal-unisound-u2-flash-b2945f",
+      "session_id": "eval-minimal-unisound-u2-flash-202a10",
       "status": "ok",
       "error": null,
       "turns": [
         {
           "turn": 1,
           "status": "ok",
-          "duration_s": 9.729,
-          "digest": "4db427e9372724857fc5facff7035d95d749790247473b0e803cfa2fed84037b",
-          "bytes": 5660,
+          "duration_s": 4.238,
+          "digest": "482b095fd716ba4b002fb77f665eef2327fd0431d749e619a591b328094e37f6",
+          "bytes": 5639,
           "model": "unisound:u2-flash",
           "tools": [
             "list_files",
@@ -188,9 +188,9 @@
         {
           "turn": 2,
           "status": "ok",
-          "duration_s": 3.237,
-          "digest": "ef1e094cd0c18e0951690a32ecb40dad94274edb7c76117c7d62b193967205de",
-          "bytes": 3121,
+          "duration_s": 2.754,
+          "digest": "1230ccf1f4658d7e6e26535c224d74649d245938026348895fa9da9d9b22e955",
+          "bytes": 3108,
           "model": "unisound:u2-flash",
           "tools": [
             "list_files",
@@ -218,8 +218,8 @@
       "vs_baseline": [
         {
           "turn": 1,
-          "bytes": 5660,
-          "base_bytes": 5660,
+          "bytes": 5639,
+          "base_bytes": 5639,
           "bytes_delta": 0,
           "tool_calls": 1,
           "base_tool_calls": 1,
@@ -248,8 +248,8 @@
         },
         {
           "turn": 2,
-          "bytes": 3121,
-          "base_bytes": 3121,
+          "bytes": 3108,
+          "base_bytes": 3108,
           "bytes_delta": 0,
           "tool_calls": 0,
           "base_tool_calls": 0,
@@ -275,24 +275,22 @@
           "tools_match": false
         }
       ],
-      "recorded_at": "2026-11-13T13:08:38"
+      "recorded_at": "2026-11-14T02:02:52"
     },
     {
       "harness": "minimal",
-      "model": "deepseek:deepseek-v4.1",
-      "retired": true,
-      "note": "deepseek-v4.1 已不在 provider 目录（COMPAT_MODELS 只有 deepseek-v4-flash / deepseek-v4-pro）；此格仅是 2026-11-07 的历史记录，对现在的 id 不构成门禁基线",
-      "session_id": "eval-minimal-deepseek-deepseek-v4-1-d43daa",
+      "model": "deepseek:deepseek-v4-pro",
+      "session_id": "eval-minimal-deepseek-deepseek-v4-pro-89a16c",
       "status": "ok",
       "error": null,
       "turns": [
         {
           "turn": 1,
           "status": "ok",
-          "duration_s": 2.238,
-          "digest": "9107eede32a09f4c0eaaa883ded25487cf9e62be8dd7dd004f699aa78a0fedd2",
-          "bytes": 2693,
-          "model": "deepseek:deepseek-v4.1",
+          "duration_s": 3.155,
+          "digest": "bc2ce56a979671e4eae6eaf5373433a10d63411daea4baad4682a9c1636eab38",
+          "bytes": 5662,
+          "model": "deepseek:deepseek-v4-pro",
           "tools": [
             "list_files",
             "write_file",
@@ -311,17 +309,19 @@
             "save_skill",
             "propose_plan"
           ],
-          "requests": 1,
-          "tool_calls": 0,
-          "tool_names": []
+          "requests": 2,
+          "tool_calls": 1,
+          "tool_names": [
+            "list_files"
+          ]
         },
         {
           "turn": 2,
           "status": "ok",
-          "duration_s": 0.306,
-          "digest": "695c635b53a81db15183f8b3c0c748d3b776e7e47160fc004757ac3cb0801570",
-          "bytes": 2746,
-          "model": "deepseek:deepseek-v4.1",
+          "duration_s": 1.767,
+          "digest": "e0641dde9c0b9619d27ae295045c3ce61d0bb72d47b80a2e1c8182383cd18d2e",
+          "bytes": 3142,
+          "model": "deepseek:deepseek-v4-pro",
           "tools": [
             "list_files",
             "write_file",
@@ -348,12 +348,14 @@
       "vs_baseline": [
         {
           "turn": 1,
-          "bytes": 2693,
-          "base_bytes": 2693,
+          "bytes": 5662,
+          "base_bytes": 5662,
           "bytes_delta": 0,
-          "tool_calls": 0,
-          "base_tool_calls": 0,
-          "tools": [],
+          "tool_calls": 1,
+          "base_tool_calls": 1,
+          "tools": [
+            "list_files"
+          ],
           "base_tools": [
             "list_files",
             "write_file",
@@ -376,8 +378,8 @@
         },
         {
           "turn": 2,
-          "bytes": 2746,
-          "base_bytes": 2746,
+          "bytes": 3142,
+          "base_bytes": 3142,
           "bytes_delta": 0,
           "tool_calls": 0,
           "base_tool_calls": 0,
@@ -403,17 +405,17 @@
           "tools_match": false
         }
       ],
-      "recorded_at": "2026-11-07T22:09:17"
+      "recorded_at": "2026-11-14T02:02:52"
     }
   ],
   "baseline": {
     "session_id": "ci-case",
-    "captured_at": "2026-11-13T19:27:31",
+    "captured_at": "2026-11-13T23:19:10",
     "turns": [
       {
         "turn": 1,
         "model": "stub:model",
-        "bytes": 3132,
+        "bytes": 2748,
         "requests": 1,
         "tool_calls": 0,
         "tools": []
@@ -421,7 +423,7 @@
       {
         "turn": 2,
         "model": "stub:model",
-        "bytes": 3221,
+        "bytes": 2837,
         "requests": 1,
         "tool_calls": 0,
         "tools": []
