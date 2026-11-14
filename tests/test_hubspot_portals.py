@@ -107,6 +107,11 @@ def _fake_hubspot(monkeypatch, responses: dict[str, dict]):
         return {"error": "HTTP 404", "details": "no fake route"}
 
     monkeypatch.setattr(integration_tools, "_request", fake_request)
+    # Batch A moved these tools to tools_mail_calendar, which resolves
+    # _request off toolkit; patch both until every platform module moved.
+    import coworker.connectors.toolkit as toolkit
+
+    monkeypatch.setattr(toolkit, "_request", fake_request)
     return calls
 
 

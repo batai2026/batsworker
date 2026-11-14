@@ -643,6 +643,22 @@ DESCRIPTORS: list[ProviderDescriptor] = [
         env_key="META_API_KEY",
         endpoint_help="Prefilled with the Meta Model API endpoint (public preview, US-only as of 2026-07).",
     ),
+    _compat(
+        "scnet",
+        "SCNet",
+        base_url="https://api.scnet.cn/api/llm/v1",
+        recommended_model="SCNet-Max",
+        env_key="SCNET_API_KEY",
+        endpoint_help="Prefilled with SCNet's OpenAI-compatible LLM gateway; edit only for a regional or proxy variant.",
+    ),
+    _compat(
+        "unisound",
+        "\u4e91\u77e5\u58f0 (Unisound)",
+        base_url="https://maas-api.unisound.com/v1",
+        recommended_model="u2-flash",
+        env_key="UNISOUND_API_KEY",
+        endpoint_help="Prefilled with Unisound's MaaS OpenAI-compatible endpoint; edit only for a regional or proxy variant.",
+    ),
     # Resellers: many labs' models behind one key, using THEIR model namespaces (the curated
     # ids + display labels live in providers/matrix.py). TODO: add Groq here (+ its matrix
     # rows) once the current provider surface is tested — deliberately deferred to bound
@@ -800,6 +816,8 @@ def _verify_bedrock(fields: dict[str, Any], timeout: float) -> dict[str, Any]:
         )
         client.list_foundation_models()
     except Exception as exc:
+        # Optional SDK: boto3/botocore are lazy-imported extras, so their exception types are
+        # not nameable here. The probe reads the code off the class name and reports it.
         kind = exc.__class__.__name__
         if kind == "NoCredentialsError":
             return {
@@ -866,7 +884,9 @@ def _verify_vertex(fields: dict[str, Any], timeout: float) -> dict[str, Any]:
                 json=_VERTEX_PROBE_BODY,
                 timeout=timeout,
             )
-        except Exception as exc:
+        # httpx is imported at the top of this function: the transport surface is knowable.
+        # OSError covers the socket-level failures httpx can raise un-wrapped (and fakes).
+        except (httpx.HTTPError, OSError, ValueError) as exc:
             return {
                 "ok": False,
                 "error": f"Couldn't reach Vertex AI ({exc.__class__.__name__}).",
@@ -892,6 +912,8 @@ def _verify_vertex(fields: dict[str, Any], timeout: float) -> dict[str, Any]:
 
         creds.refresh(Request())
     except Exception as exc:
+        # Optional SDK: google-auth is lazy-imported; the probe classifies by class name
+        # (DefaultCredentialsError / RefreshError / MalformedError).
         kind = exc.__class__.__name__
         if kind == "DefaultCredentialsError":
             return {
@@ -913,7 +935,7 @@ def _verify_vertex(fields: dict[str, Any], timeout: float) -> dict[str, Any]:
             json=_VERTEX_PROBE_BODY,
             timeout=timeout,
         )
-    except Exception as exc:
+    except (httpx.HTTPError, OSError, ValueError) as exc:
         return {"ok": False, "error": f"Couldn't reach Vertex AI ({exc.__class__.__name__})."}
     if resp.status_code < 300:
         return {"ok": True}
@@ -1000,7 +1022,7 @@ def verify_provider_key(
                 headers={"Authorization": f"Bearer {key}"},
                 timeout=timeout,
             )
-    except Exception as exc:  # DNS/connection/timeout — never let it bubble to a 500
+    except (httpx.HTTPError, OSError, ValueError) as exc:  # DNS/connection/timeout — never bubble to a 500
         return {
             "ok": False,
             "error": f"Couldn't reach {d.title} ({exc.__class__.__name__}).",

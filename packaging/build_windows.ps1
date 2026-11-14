@@ -15,7 +15,7 @@
     - A Python venv at platform\.venv with this package installed editable, plus pyinstaller.
       `typer` is needed only at build time: PyInstaller walks the `mcp` package and `mcp.cli`
       calls sys.exit() at import if typer is absent, which aborts the freeze.
-        py -m venv .venv ; .\.venv\Scripts\pip install -e ".[bedrock]" pyinstaller tzdata typer
+        py -m venv .venv ; .\.venv\Scripts\pip install -r requirements-build.lock ; .\.venv\Scripts\pip install -e . --no-deps
 
   The result is UNSIGNED — first launch shows a SmartScreen warning ("More info" -> "Run anyway").
   Authenticode signing is a later step.
@@ -73,6 +73,15 @@ Write-Host "==> [1/3] PyInstaller: bundling openworker-server ($Triple)" -Foregr
     --distpath (Join-Path $Here "dist") --workpath (Join-Path $Here "build") `
     (Join-Path $Here "openworker-server.spec")
 if ($LASTEXITCODE -ne 0) { throw "PyInstaller failed (exit $LASTEXITCODE)" }
+
+# The shell (src-tauri/src/lib.rs) passes flags to this binary that only the Python CLI
+# defines. A bundle older than a CLI change still starts, then dies at launch with
+# "unrecognized arguments" -- nothing else in the build catches that, so compare the two
+# CLIs here and fail before the stale binary is staged.
+Write-Host "==> [1.5/3] checking the bundled CLI against the Python CLI" -ForegroundColor Cyan
+& (Join-Path $Venv "Scripts\python.exe") (Join-Path $Platform "scripts\check_sidecar_cli.py") `
+    (Join-Path $Here "dist\openworker-server\openworker-server.exe")
+if ($LASTEXITCODE -ne 0) { throw "bundled sidecar CLI is stale (rebuild after CLI changes)" }
 
 Write-Host "==> [2/3] staging sidecar resources" -ForegroundColor Cyan
 # Onedir bundle (exe + _internal\) ships via Tauri `resources`, landing at <install>\sidecar\

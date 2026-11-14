@@ -139,7 +139,8 @@ class _Pump:
             try:
                 for line in self.proc.stderr:
                     self.chunks.append(line)
-            except Exception:
+            # Pipe boundary: the child may exit mid-read; a closed/short stderr is not an error.
+            except (OSError, ValueError):
                 pass
 
         threading.Thread(target=drain, daemon=True).start()
@@ -180,6 +181,8 @@ def _run_guest_sync(
             stderr=subprocess.PIPE,
             text=True,
             bufsize=1,
+            encoding="utf-8",
+            errors="replace",
         )
     except FileNotFoundError:
         return {
@@ -230,11 +233,13 @@ def _run_guest_sync(
     finally:
         try:
             proc.stdin.close()
-        except Exception:
+        except (OSError, ValueError):
             pass
         try:
             proc.wait(timeout=5)
-        except Exception:
+        # The daemon may already be gone (OSError) or refuse to exit in time
+        # (TimeoutExpired is a SubprocessError) — either way we escalate to kill().
+        except (OSError, subprocess.SubprocessError):
             proc.kill()
 
     stderr_text = stderr_pump.text()
@@ -294,6 +299,9 @@ def _handle_call(
         result = reg.execute(name, args)
         if inspect.isawaitable(result):
             result = _await_in_loop(result, loop)
+    # Registry boundary: tool implementations are arbitrary code (subprocesses, HTTP, model
+    # calls). Any failure becomes this call's error payload — that is how the sandboxed script
+    # learns the tool failed instead of dying with it.
     except Exception as exc:
         _traj(runtime, "tool_result", name=name, bridge=True, error=str(exc)[:200])
         return {"ok": False, "error": f"{type(exc).__name__}: {exc}"}

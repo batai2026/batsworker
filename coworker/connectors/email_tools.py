@@ -374,7 +374,7 @@ def make_email_tools(
             return None, None, None, {"error": err}
         try:
             imap = _imap_login(profile, servers, imap_factory)
-        except Exception as exc:
+        except (imaplib.IMAP4.error, OSError) as exc:
             return (
                 None,
                 None,
@@ -386,7 +386,7 @@ def make_email_tools(
     def _logout(imap) -> None:
         try:
             imap.logout()
-        except Exception:
+        except (imaplib.IMAP4.error, OSError):
             pass
 
     def email_list_folders() -> dict[str, Any]:
@@ -409,7 +409,7 @@ def make_email_tools(
                         m = re.search(rb"MESSAGES\s+(\d+)", data[0])
                         if m:
                             entry["messages"] = int(m.group(1))
-                except Exception:
+                except (imaplib.IMAP4.error, OSError, ValueError, TypeError):
                     pass
                 folders.append(entry)
             return {"ok": True, "folders": folders}
@@ -659,16 +659,16 @@ def make_email_tools(
 
         try:
             smtp = _smtp_login(profile, servers, smtp_factory)
-        except Exception as exc:
+        except (smtplib.SMTPException, OSError) as exc:
             return {"error": f"SMTP login failed: {exc}.{_auth_hint(servers)}"}
         try:
             smtp.send_message(msg)
-        except Exception as exc:
+        except (smtplib.SMTPException, OSError) as exc:
             return {"error": f"send failed: {exc}"}
         finally:
             try:
                 smtp.quit()
-            except Exception:
+            except (smtplib.SMTPException, OSError):
                 pass
         return {"ok": True, "message_id": msg["Message-ID"], "subject": final_subject}
 
@@ -824,7 +824,7 @@ def validate_email_account(creds: dict[str, Any]) -> tuple[bool, str, str]:
         finally:
             try:
                 imap.logout()
-            except Exception:
+            except (imaplib.IMAP4.error, OSError):
                 pass
     except Exception as exc:
         return False, "", f"IMAP check failed: {exc}.{_auth_hint(servers)}"
@@ -835,7 +835,7 @@ def validate_email_account(creds: dict[str, Any]) -> tuple[bool, str, str]:
         finally:
             try:
                 smtp.quit()
-            except Exception:
+            except (smtplib.SMTPException, OSError):
                 pass
     except Exception as exc:
         return False, "", f"SMTP check failed: {exc}.{_auth_hint(servers)}"

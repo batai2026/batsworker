@@ -124,7 +124,14 @@ class ProvidersMixin:
             # Linux: zenity when present; otherwise the GUI's paste-a-path input remains.
             cmd = ["zenity", "--file-selection", "--directory"]
         try:
-            out = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+            out = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=300,
+            )
         except (OSError, subprocess.TimeoutExpired):
             return {"ok": False, "error": "no native folder picker available"}
         path = (out.stdout or "").strip()
@@ -158,6 +165,10 @@ class ProvidersMixin:
         "qwen": ["qwen3-max", "qwen3-coder-plus", "qwen-plus"],
         "xai": ["grok-4.3", "grok-4"],
         "mistral": ["mistral-large-latest", "mistral-small-latest"],
+        # Domestic MaaS gateways (owner-supplied ids, 2026-11-13). Each list starts with the
+        # descriptor's `recommended_model`, which `test_providers` pins.
+        "scnet": ["SCNet-Max"],
+        "unisound": ["u2-flash"],
     }
 
     def _suggested_models(self, name: str) -> list[str]:

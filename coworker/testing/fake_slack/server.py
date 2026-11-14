@@ -47,7 +47,7 @@ def _maybe_json(value: Any) -> Any:
     if isinstance(value, str) and value[:1] in "[{":
         try:
             return json.loads(value)
-        except Exception:
+        except (json.JSONDecodeError, TypeError):
             return value
     return value
 
@@ -122,7 +122,7 @@ class FakeSlack:
         for ws in list(self._sockets):
             try:
                 await ws.close()
-            except Exception:
+            except (OSError, RuntimeError):
                 pass
         self._sockets.clear()
         if self._server is not None:
@@ -130,7 +130,7 @@ class FakeSlack:
         if self._serve_task is not None:
             try:
                 await asyncio.wait_for(self._serve_task, timeout=5)
-            except Exception:
+            except (asyncio.TimeoutError, OSError):
                 self._serve_task.cancel()
         self._server = None
         self._serve_task = None
@@ -191,7 +191,7 @@ class FakeSlack:
         for ws in list(self._sockets):
             try:
                 await ws.close()
-            except Exception:
+            except (OSError, RuntimeError):
                 pass
         self._sockets.clear()
         self._socket_connected.clear()
@@ -321,7 +321,7 @@ class FakeSlack:
         for ws in list(self._sockets):
             try:
                 await ws.close()
-            except Exception:
+            except (OSError, RuntimeError):
                 pass
         self._sockets.clear()
 
@@ -332,7 +332,7 @@ class FakeSlack:
         for ws in list(self._sockets):
             try:
                 await ws.send_text(raw)
-            except Exception:
+            except (OSError, RuntimeError):
                 dead.append(ws)
         for ws in dead:
             self._sockets.discard(ws)
@@ -348,13 +348,13 @@ class FakeSlack:
                 body = await request.json()
                 if isinstance(body, dict):
                     params.update(body)
-            except Exception:
+            except ValueError:
                 pass
         else:
             try:
                 form = await request.form()
                 params.update({k: _maybe_json(v) for k, v in form.items()})
-            except Exception:
+            except (ValueError, TypeError):
                 pass
         return params
 
@@ -441,10 +441,12 @@ class FakeSlack:
                 raw = await websocket.receive_text()
                 try:
                     self._acks.append(json.loads(raw))
-                except Exception:
+                except (json.JSONDecodeError, TypeError):
                     pass
         except WebSocketDisconnect:
             pass
+        # Lifecycle boundary: the harness socket loop must survive whatever a test client does
+        # (including abrupt teardown); the tests only care that the socket went away.
         except Exception:
             logger.debug("FakeSlack socket closed", exc_info=True)
         finally:

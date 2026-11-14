@@ -108,6 +108,8 @@ class _BrowserController:
                 title=self._page.title(),
                 controls=snap.get("controls", [])[:30],
             )
+        # Playwright boundary: optional/lazy dependency, so its error type is not nameable
+        # here, and every caller wants an error payload rather than an exception.
         except Exception as exc:
             self._touch(open=True, status="error", last_error=str(exc))
 
@@ -139,6 +141,8 @@ class _BrowserController:
                     open=True, status="open", last_action="open browser", last_error=""
                 )
                 return self._page, None
+            # Playwright boundary: optional/lazy dependency, so its error type is not nameable
+            # here, and every caller wants an error payload rather than an exception.
             except Exception as exc:
                 self._touch(open=False, status="error", last_error=str(exc))
                 return None, self._setup_error(exc)
@@ -158,6 +162,8 @@ class _BrowserController:
                     self._browser.close()
                 if self._playwright is not None:
                     self._playwright.stop()
+            # Playwright boundary: optional/lazy dependency, so its error type is not nameable
+            # here, and every caller wants an error payload rather than an exception.
             except Exception as exc:
                 return {"error": str(exc)}
             finally:
@@ -197,6 +203,8 @@ class _BrowserController:
                 )
                 self._refresh_page_state()
                 return {"ok": True, **dict(self._state)}
+            # Playwright boundary: optional/lazy dependency, so its error type is not nameable
+            # here, and every caller wants an error payload rather than an exception.
             except Exception as exc:
                 self._touch(
                     last_action="screenshot", last_result="error", last_error=str(exc)
@@ -212,6 +220,8 @@ class _BrowserController:
                 self._touch(last_action=action, last_result="running", last_error="")
                 try:
                     out = fn(page)
+                # Playwright boundary: optional/lazy dependency, so its error type is not nameable
+                # here, and every caller wants an error payload rather than an exception.
                 except Exception as exc:
                     out = {"error": str(exc)}
                 if "error" in out:
@@ -246,7 +256,7 @@ def browser_close_session() -> dict[str, Any]:
 def _cap(value: int, default: int = 20000, upper: int = 100000) -> int:
     try:
         return max(1, min(int(value or default), upper))
-    except Exception:
+    except (TypeError, ValueError):
         return default
 
 
@@ -260,6 +270,8 @@ def _target_locator(page, target: str):
         return page.get_by_role(role.strip(), name=name.strip() or None).first
     try:
         return page.locator(target).first
+    # Playwright boundary: optional/lazy dependency, so its error type is not nameable
+    # here, and every caller wants an error payload rather than an exception.
     except Exception:
         return page.get_by_text(target, exact=False).first
 
@@ -267,6 +279,8 @@ def _target_locator(page, target: str):
 def _safe_call(fn: Callable[[], Any]) -> dict[str, Any]:
     try:
         return fn()
+    # Playwright boundary: optional/lazy dependency, so its error type is not nameable
+    # here, and every caller wants an error payload rather than an exception.
     except Exception as exc:
         return {"error": str(exc)}
 

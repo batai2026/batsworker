@@ -115,7 +115,9 @@ def _jwt_claims(token: str) -> dict[str, Any]:
         payload += "=" * (-len(payload) % 4)
         claims = json.loads(base64.urlsafe_b64decode(payload.encode("ascii")))
         return claims if isinstance(claims, dict) else {}
-    except Exception:
+    # JWT decode surface: no second segment (IndexError), bad base64/JSON (ValueError), or a
+    # non-str token (TypeError). A malformed token means "no claims", nothing more.
+    except (IndexError, ValueError, TypeError):
         return {}
 
 
@@ -257,6 +259,9 @@ class CodexTokenStore:
                 }
             )
         except Exception as exc:
+            # Reaching the token endpoint goes through `_token_post`, which lazy-imports httpx,
+            # so its transport type is not nameable here; the class name rides into the message
+            # and the caller sees one CodexAuthError.
             raise CodexAuthError(
                 "Couldn't reach the sign-in service to refresh the ChatGPT session "
                 f"({exc.__class__.__name__})."
@@ -357,7 +362,8 @@ async def _start_callback_server(
             try:
                 await writer.drain()
                 writer.close()
-            except Exception:
+            # Loopback callback writer: the browser may have gone before we answer.
+            except (OSError, ValueError):
                 pass
 
     try:
@@ -454,7 +460,9 @@ def verify(secrets: Any, timeout: float = 10.0) -> dict[str, Any]:
             },
             timeout=timeout,
         )
-    except Exception as exc:
+    # Verify is explicitly "never raises": a transport failure or a non-JSON body is the
+    # recoverable surface and becomes {ok: false} with the exception class in the message.
+    except (httpx.HTTPError, ValueError) as exc:
         return {
             "ok": False,
             "error": f"Couldn't reach the ChatGPT backend ({exc.__class__.__name__}).",

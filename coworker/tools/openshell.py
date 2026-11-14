@@ -41,7 +41,14 @@ import time
 from pathlib import Path
 from typing import Any, Dict, Optional
 
-from .shell import Executor, LocalExecutor, _DEFAULT_TIMEOUT, _MAX_TIMEOUT, _NONINTERACTIVE_ENV
+from .shell import (
+    UTF8_TEXT_IO,
+    Executor,
+    LocalExecutor,
+    _DEFAULT_TIMEOUT,
+    _MAX_TIMEOUT,
+    _NONINTERACTIVE_ENV,
+)
 
 _DEFAULT_PREFIX = [
     "openshell", "sandbox", "exec", "-n", "{sandbox}",
@@ -168,6 +175,7 @@ class OpenShellExecutor(Executor):
                 [exe, "--version"],
                 capture_output=True,
                 text=True,
+                **UTF8_TEXT_IO,
                 timeout=_PROBE_TIMEOUT,
                 env={**os.environ, **_NONINTERACTIVE_ENV},
             )
@@ -215,6 +223,7 @@ class OpenShellExecutor(Executor):
                 self._create_argv(),
                 capture_output=True,
                 text=True,
+                **UTF8_TEXT_IO,
                 timeout=_CREATE_TIMEOUT,
                 env={**os.environ, **_NONINTERACTIVE_ENV},
             )
@@ -234,6 +243,7 @@ class OpenShellExecutor(Executor):
                     [*self.argv_prefix, "true"],
                     capture_output=True,
                     text=True,
+                    **UTF8_TEXT_IO,
                     timeout=_PROBE_TIMEOUT + 2,
                     env={**os.environ, **_NONINTERACTIVE_ENV},
                 )
@@ -257,6 +267,7 @@ class OpenShellExecutor(Executor):
                     ["openshell", "sandbox", "delete", self.sandbox_name],
                     capture_output=True,
                     text=True,
+                    **UTF8_TEXT_IO,
                     timeout=_PROBE_TIMEOUT + 5,
                     env={**os.environ, **_NONINTERACTIVE_ENV},
                 )
@@ -328,6 +339,7 @@ class OpenShellExecutor(Executor):
                 cmd,
                 capture_output=True,
                 text=True,
+                **UTF8_TEXT_IO,
                 timeout=timeout,
                 env={**os.environ, **_NONINTERACTIVE_ENV},
             )
@@ -368,6 +380,7 @@ def openshell_available() -> bool:
                 [_DEFAULT_PREFIX[0], "--version"],
                 capture_output=True,
                 text=True,
+                **UTF8_TEXT_IO,
                 timeout=_PROBE_TIMEOUT,
             ).returncode
             == 0

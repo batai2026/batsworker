@@ -172,7 +172,7 @@ def _loaded_skill_names(messages: list[dict[str, Any]]) -> set[str]:
                 continue
             try:
                 name = str(_json.loads(fn.get("arguments") or "{}").get("name", ""))
-            except Exception:
+            except (_json.JSONDecodeError, TypeError, AttributeError):
                 continue
             result = results.get(tc.get("id", ""), "")
             if name and '"instructions"' in result:

@@ -11,8 +11,9 @@ from pathlib import Path
 from ..config import load_config
 from ..permissions import Mode
 from ..secrets import state_dir, write_private_text
-from .app import _WS_MAX_FRAME_BYTES, create_app
+from .app import create_app
 from .manager import SessionManager
+from .routes.ws import WS_MAX_FRAME_BYTES
 
 
 def _exit_when_orphaned() -> None:
@@ -99,14 +100,90 @@ def _watch_parent_windows(parent: int) -> None:
     threading.Thread(target=watch, daemon=True).start()
 
 
-def build_app(workspace: str | None, model: str, mode: str):
+def _spa_target(root: Path, rel: str) -> Path | None:
+    """Map a URL path to a file inside `root`, or None when it escapes.
+
+    `rel` comes straight from the URL, so it is attacker-controlled even on
+    loopback: `..` segments, an absolute path, or (on Windows) backslash
+    separators must all resolve back inside the dist root. Without that check
+    the fallback route serves any file the sidecar process can read — including
+    the state dir's `secrets.json` and the sidecar token.
+    """
+    try:
+        target = (root / rel).resolve()
+    except (OSError, RuntimeError, ValueError):
+        return None
+    return target if target.is_relative_to(root) else None
+
+
+def _mount_frontend_spa(app, frontend_dist: str) -> bool:
+    """Serve a prebuilt SPA from the sidecar's own loopback origin.
+
+    The desktop shell points its webview at `http://127.0.0.1:<sidecar port>/`,
+    which keeps the SPA and the API on one origin and avoids Tauri 2.11's
+    embedded-server deadlock on Windows. Returns False when the directory holds
+    no usable `index.html`, so the caller can fall back to API-only serving.
+    """
+    from fastapi.responses import FileResponse
+    from fastapi.staticfiles import StaticFiles
+
+    dist_path = Path(frontend_dist)
+    if not dist_path.is_dir() or not (dist_path / "index.html").is_file():
+        return False
+    root = dist_path.resolve()
+
+    for sub in ("assets", "icons"):
+        sub_path = root / sub
+        if sub_path.is_dir():
+            app.mount(f"/{sub}", StaticFiles(directory=str(sub_path)), name=sub)
+
+    # `{full_path:path}` yields the path WITHOUT its leading slash, so these are
+    # compared route-relative. Unknown API paths must 404 rather than answer 200
+    # with the SPA shell: a client parsing HTML as JSON reports a silent lie.
+    api_prefixes = ("v1", "ws", "healthz", "docs", "openapi.json")
+
+    @app.get("/")
+    async def _serve_index():
+        return FileResponse(str(root / "index.html"))
+
+    @app.get("/{full_path:path}")
+    async def _serve_spa(full_path: str):
+        from fastapi import HTTPException
+
+        rel = full_path.lstrip("/")
+        if any(rel == p or rel.startswith(p + "/") for p in api_prefixes):
+            raise HTTPException(status_code=404)
+        target = _spa_target(root, rel)
+        if target is None:
+            raise HTTPException(status_code=404)
+        if target.is_file():
+            return FileResponse(str(target))
+        return FileResponse(str(root / "index.html"))
+
+    # Tells the token middleware that this app also serves the UI: a navigation
+    # cannot carry `x-openworker-token`, so the shell and its assets are exempt.
+    app.state.serves_spa = True
+    return True
+
+
+def build_app(workspace: str | None, model: str, mode: str, frontend_dist: str | None = None):
     manager = SessionManager(
         workspace=Path(workspace).expanduser().resolve() if workspace else None,
         data_dir=state_dir(),
         model=model,
         mode=Mode(mode),
     )
-    return create_app(manager)
+    app = create_app(manager)
+    # Serve the prebuilt frontend SPA from the same loopback port as the API, so
+    # the Tauri webview can load http://127.0.0.1:<port>/index.html and skip
+    # Tauri's embedded-server deadlock on Windows (tauri 2.11). A broken dist
+    # must not take the API down with it.
+    if frontend_dist:
+        try:
+            _mount_frontend_spa(app, frontend_dist)
+        except Exception as e:
+            print(f"[sidecar] could not mount frontend dist: {e}", file=sys.stderr)
+    return app
 
 
 def _ensure_ca_bundle() -> None:
@@ -169,6 +246,13 @@ def main(argv=None) -> None:
     )
     parser.add_argument("--host", default=cfg.host)
     parser.add_argument("--port", type=int, default=cfg.port)
+    parser.add_argument(
+        "--frontend-dist",
+        default=None,
+        help="Directory containing the prebuilt frontend (dist/). If set, the sidecar "
+        "serves it at /index.html so the desktop webview can load the SPA from the same "
+        "loopback port as the API — avoids Tauri's embedded-server deadlock on Windows.",
+    )
     args = parser.parse_args(argv)
     _refuse_state_dir_inside_workspace(args.cwd)
 
@@ -182,9 +266,9 @@ def main(argv=None) -> None:
         import uvicorn
 
         _exit_when_orphaned()
-        app = build_app(args.cwd, args.model, args.mode)
+        app = build_app(args.cwd, args.model, args.mode, frontend_dist=args.frontend_dist)
         uvicorn.run(
-            app, host=args.host, port=args.port, ws_max_size=_WS_MAX_FRAME_BYTES
+            app, host=args.host, port=args.port, ws_max_size=WS_MAX_FRAME_BYTES
         )
     finally:
         if generated_token_path is not None:

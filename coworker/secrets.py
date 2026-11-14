@@ -81,6 +81,8 @@ def _restrict_to_user(path: Path, *, is_dir: bool) -> None:
             subprocess.run(
                 ["icacls", str(path), "/inheritance:r", "/grant:r", grant],
                 capture_output=True,
+                encoding="utf-8",
+                errors="replace",
                 check=False,
             )
         except OSError:

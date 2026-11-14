@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 import pytest
 
@@ -104,6 +105,333 @@ async def test_run_matrix_stub_runs_code_mode(tmp_path):
     assert "exec" in turn["tools"]
     assert "read_file" not in turn["tools"]  # 域工具坍缩进桥接，不再上模型面
     assert "run_shell" not in turn["tools"]
+
+
+@pytest.mark.asyncio
+async def test_run_matrix_seeds_the_workspace_from_the_case(tmp_path):
+    """用例自带 workspace/ 模板会铺进运行目录。
+
+    存在的理由：空目录里「列出文件」可以被模型直接回一句「空的」，于是同一个用例有
+    时有工具调用、时没有（deepseek 就这样间歇性失败）。铺一个内容固定的文件后，
+    「读 notes.txt」非调工具不可，形状才稳定。
+    """
+    seed = tmp_path / "seed"
+    (seed / "sub").mkdir(parents=True)
+    (seed / "notes.txt").write_text("seed: 7f3c1a\n", encoding="utf-8")
+    (seed / "sub" / "a.txt").write_text("x\n", encoding="utf-8")
+    workspace = tmp_path / "ws"
+    workspace.mkdir()
+
+    report = await run_matrix(
+        turns=[RecordedTurn(turn=1, input_text="hello")],
+        models=["stub:model"],
+        harness_names=["minimal"],
+        workspace=workspace,
+        provider_factory=matrix._stub_provider_factory(),
+        work_dir=tmp_path / "work",
+        seed_dir=seed,
+    )
+
+    assert (workspace / "notes.txt").read_text(encoding="utf-8") == "seed: 7f3c1a\n"
+    assert (workspace / "sub" / "a.txt").read_text(encoding="utf-8") == "x\n"
+    assert report["cells"][0]["status"] == "ok"
+
+
+def test_in_git_worktree_flags_the_repo_and_spares_a_temp_dir(tmp_path):
+    """基线字节里含 git 快照，所以只有“在不在仓库里”能解释 Windows/CI 的差几百字节。"""
+    assert matrix._in_git_worktree(Path.cwd()) is True
+    assert matrix._in_git_worktree(tmp_path) is False
+
+
+def test_compare_baseline_picks_the_matching_cell_model():
+    """真实模型基线按 (harness, model) 存，各比各的；不能拿第一个 cell 当全体。"""
+    baseline = {
+        "cells": [
+            {
+                "harness": "minimal",
+                "model": "a:cheap",
+                "turns": [{"turn": 1, "bytes": 100, "tool_calls": 0, "tools": []}],
+            },
+            {
+                "harness": "minimal",
+                "model": "b:strong",
+                "turns": [
+                    {"turn": 1, "bytes": 900, "tool_calls": 1, "tools": ["list_files"]}
+                ],
+            },
+        ]
+    }
+    cell = {
+        "harness": "minimal",
+        "model": "b:strong",
+        "turns": [
+            {"turn": 1, "bytes": 905, "tool_calls": 1, "tool_names": ["list_files"]}
+        ],
+    }
+    (diff,) = matrix.compare_baseline(cell, baseline)
+    assert diff["base_bytes"] == 900
+    assert diff["bytes_delta"] == 5
+    assert diff["tools_match"] is True
+
+
+_MODEL_TOOLS = ["list_files", "write_file", "read_file"]  # 模型面工具清单（报告里的 tools）
+
+
+def test_compare_baseline_prefers_tool_names_in_a_report_shaped_baseline():
+    """报告形态的基线里 tools 是工具清单、tool_names 才是调用序列。
+
+    混用会把 16 个工具当成一次调用的名字序列，于是每个 turn 都误报 tool_drift——
+    2026-11-14 那次 check_baseline=1 的 CI 就因为这个出了 8 条假失败。
+    """
+    baseline = {
+        "cells": [
+            {
+                "harness": "minimal",
+                "model": "m:1",
+                "turns": [
+                    {
+                        "turn": 1,
+                        "bytes": 5662,
+                        "tool_calls": 1,
+                        "tools": _MODEL_TOOLS,
+                        "tool_names": ["list_files"],
+                    }
+                ],
+            }
+        ]
+    }
+    cell = {
+        "harness": "minimal",
+        "model": "m:1",
+        "turns": [{"turn": 1, "bytes": 5684, "tool_names": ["list_files"]}],
+    }
+    (diff,) = matrix.compare_baseline(cell, baseline)
+    assert diff["base_tools"] == ["list_files"]
+    assert diff["tools_match"] is True
+
+
+def _prompt_report(
+    first_now,
+    *,
+    base_first=2803,
+    bytes_now=6196,
+    tools_now=("list_files",),
+    with_base_first=True,
+):
+    """造一份报告形态的 cell：基线带 first_bytes，本次带的 first_bytes 可调。"""
+    base_turns = [
+        {
+            "turn": 1,
+            "bytes": base_first,
+            "tool_calls": 1,
+            "tools": _MODEL_TOOLS,
+            "tool_names": ["list_files"],
+        },
+        {
+            "turn": 2,
+            "bytes": 3702,
+            "tool_calls": 0,
+            "tools": _MODEL_TOOLS,
+            "tool_names": [],
+        },
+    ]
+    if with_base_first:
+        for turn in base_turns:
+            turn["first_bytes"] = turn["bytes"]
+
+    def diff(turn, now, base_bytes, tools, base_tools, first, base_first_value):
+        return {
+            "turn": turn,
+            "bytes": now,
+            "base_bytes": base_bytes,
+            "bytes_delta": now - base_bytes,
+            "first_bytes": first,
+            "base_first_bytes": base_first_value if with_base_first else 0,
+            "first_delta": first - base_first_value,
+            "tool_calls": len(tools),
+            "base_tool_calls": len(base_tools),
+            "tools": list(tools),
+            "base_tools": list(base_tools),
+            "tools_match": list(tools) == list(base_tools),
+        }
+
+    return {
+        "baseline": {
+            "cells": [
+                {"harness": "minimal", "model": "scnet:SCNet-Max", "turns": base_turns}
+            ]
+        },
+        "cells": [
+            {
+                "harness": "minimal",
+                "model": "scnet:SCNet-Max",
+                "status": "ok",
+                "vs_baseline": [
+                    diff(
+                        1,
+                        bytes_now,
+                        base_first,
+                        tools_now,
+                        ["list_files"],
+                        first_now,
+                        base_first,
+                    ),
+                    diff(2, 2821, 3702, [], [], 2821, 3702),
+                ],
+            }
+        ],
+    }
+
+
+def test_check_baseline_gates_prompt_bytes_not_model_behaviour():
+    """同一个用例，三家的工具调用与总量差很多，但第一轮第一次请求的字节量相同——
+    那才是我们构造的东西（提示 + 环境块 + 工具定义），模型选择只作观测。"""
+    report = _prompt_report(2752, bytes_now=16352, tools_now=())
+    gate = matrix.check_baseline(report, max_bytes_ratio=0.10)
+    assert gate["ok"] is True, gate["failures"]
+
+
+def test_check_baseline_fails_prompt_drift():
+    gate = matrix.check_baseline(_prompt_report(3300), max_bytes_ratio=0.10)
+    assert gate["ok"] is False
+    (failure,) = gate["failures"]
+    assert failure["kind"] == "prompt_drift"
+    assert failure["detail"]["scope"] == "prompt"
+
+
+def test_check_baseline_asks_for_a_re_record_without_prompt_bytes():
+    """旧基线没有 first_bytes时必须显式报错，而不是静默算绿。"""
+    report = _prompt_report(2752, with_base_first=False)
+    gate = matrix.check_baseline(report, max_bytes_ratio=0.10)
+    assert gate["ok"] is False
+    (failure,) = gate["failures"]
+    assert failure["kind"] == "missing_prompt_bytes"
+
+
+def test_check_baseline_per_cell_gate_passes_on_a_matching_model():
+    baseline = {
+        "cells": [
+            {
+                "harness": "minimal",
+                "model": "a:cheap",
+                "turns": [{"turn": 1, "bytes": 1000, "tool_calls": 0, "tools": []}],
+            }
+        ]
+    }
+    report = {
+        "baseline": baseline,
+        "cells": [
+            {
+                "harness": "minimal",
+                "model": "a:cheap",
+                "status": "ok",
+                "vs_baseline": [
+                    {
+                        "turn": 1,
+                        "bytes": 1050,
+                        "base_bytes": 1000,
+                        "bytes_delta": 50,
+                        "tool_calls": 0,
+                        "base_tool_calls": 0,
+                        "tools": [],
+                        "base_tools": [],
+                        "tools_match": True,
+                    }
+                ],
+            }
+        ],
+    }
+    gate = matrix.check_baseline(report, max_bytes_ratio=0.10)
+    assert gate["ok"] is True
+    assert gate["checked_turns"] == 1
+
+
+def test_check_baseline_flags_a_model_missing_from_a_per_cell_baseline():
+    """基线里没有这个模型时必须报 missing_cell，而不是静默算通过。"""
+    baseline = {
+        "cells": [
+            {
+                "harness": "minimal",
+                "model": "known:model",
+                "turns": [{"turn": 1, "bytes": 1000, "tool_calls": 0, "tools": []}],
+            }
+        ]
+    }
+    report = {
+        "baseline": baseline,
+        "cells": [
+            {
+                "harness": "minimal",
+                "model": "brand-new:model",
+                "status": "ok",
+                "vs_baseline": [
+                    {
+                        "turn": 1,
+                        "bytes": 1000,
+                        "base_bytes": 0,
+                        "bytes_delta": 1000,
+                        "tool_calls": 0,
+                        "base_tool_calls": 0,
+                        "tools": [],
+                        "base_tools": [],
+                        "tools_match": True,
+                    }
+                ],
+            }
+        ],
+    }
+    gate = matrix.check_baseline(report, max_bytes_ratio=0.10)
+    assert gate["ok"] is False
+    (failure,) = gate["failures"]
+    assert failure["kind"] == "missing_cell"
+    assert failure["model"] == "brand-new:model"
+
+
+@pytest.mark.asyncio
+async def test_run_matrix_records_a_timeout_instead_of_hanging(tmp_path):
+    """An unreachable endpoint must land as a `timeout` row, not as silent minutes.
+
+    The provider SDKs default to a 600s request timeout with two retries, so before this
+    guard a dead endpoint looked like a hung job: no output, no failure, no end. The turn is
+    now bounded by `--timeout`, and cancelling the await aborts the SDK call with it.
+    """
+    import time
+
+    from coworker.eval import matrix
+    from coworker.personas.harness import builtin_specs
+    from coworker.providers import AssistantTurn, ModelCapabilities, ProviderClient
+
+    class _SlowProvider(ProviderClient):
+        # The engine calls `complete` inside `asyncio.to_thread`, so the blocking sleep is
+        # what a hung HTTP call looks like from the turn's point of view. It is kept short:
+        # the timeout fires at 0.1s and the thread finishes a second later on its own.
+        def complete(self, *, model, messages, tools=None, **settings):  # noqa: ANN001
+            time.sleep(1.0)
+            return AssistantTurn(text="too late", finish_reason="stop")
+
+        def capabilities(self, model):  # noqa: ANN001
+            return ModelCapabilities()
+
+    report = await matrix.run_matrix(
+        turns=[
+            matrix.RecordedTurn(turn=1, input_text="hello"),
+            matrix.RecordedTurn(turn=2, input_text="again"),
+        ],
+        models=["stub:model"],
+        harness_names=["minimal"],
+        workspace=tmp_path,
+        provider_factory=lambda _model, _spec: _SlowProvider(),
+        work_dir=tmp_path / "work",
+        harness_specs=builtin_specs(),
+        timeout=0.1,
+    )
+    (cell,) = report["cells"]
+    assert cell["status"] == "error"
+    assert "exceeded 0.1s" in (cell["error"] or "")
+    # The first turn times out and the cell stops there instead of trying the second one.
+    (turn,) = cell["turns"]
+    assert turn["status"] == "timeout"
+    assert turn["turn"] == 1
 
 
 @pytest.mark.asyncio

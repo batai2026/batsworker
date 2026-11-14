@@ -337,6 +337,8 @@ class TurnEngine:
         for hook in self._interrupt_hooks:
             try:
                 hook()
+            # Boundary: this failure is reported or degraded by the caller by design; narrowing it
+            # would escalate one component's error into the whole session's.
             except Exception:
                 pass  # best-effort: a dead executor must not block the stop
 
@@ -400,18 +402,24 @@ class TurnEngine:
                     has_display=display is not None,
                     message_count=len(self.messages),
                 )
+            # Boundary: this failure is reported or degraded by the caller by design; narrowing it
+            # would escalate one component's error into the whole session's.
             except Exception:
                 pass  # the ledger must never break a turn
         cp = getattr(self, "checkpoints", None)
         if cp is not None:
             try:
                 cp.begin_turn(user_input if isinstance(user_input, str) else "(attachments)")
+            # Boundary: this failure is reported or degraded by the caller by design; narrowing it
+            # would escalate one component's error into the whole session's.
             except Exception:
                 pass  # checkpoints must never break a turn
         tr = getattr(self, "traces", None)
         if tr is not None:
             try:
                 self._turn_span = tr.start_span("turn", "user turn")
+            # Boundary: this failure is reported or degraded by the caller by design; narrowing it
+            # would escalate one component's error into the whole session's.
             except Exception:
                 self._turn_span = None
         # §8.4 retry guard resets per user turn: two reviewer denials in one turn route
@@ -435,12 +443,16 @@ class TurnEngine:
             if cp is not None:
                 try:
                     cp.end_turn()
+                # Boundary: this failure is reported or degraded by the caller by design; narrowing it
+                # would escalate one component's error into the whole session's.
                 except Exception:
                     pass  # an unfinalized pending turn is discarded on next load
             tr = getattr(self, "traces", None)
             if tr is not None and getattr(self, "_turn_span", None) is not None:
                 try:
                     tr.finish(self._turn_span, status="ok")
+                # Boundary: this failure is reported or degraded by the caller by design; narrowing it
+                # would escalate one component's error into the whole session's.
                 except Exception:
                     pass
                 self._turn_span = None
@@ -448,6 +460,8 @@ class TurnEngine:
             if tj is not None:
                 try:
                     tj.end_turn(status=status)
+                # Boundary: this failure is reported or degraded by the caller by design; narrowing it
+                # would escalate one component's error into the whole session's.
                 except Exception:
                     pass
 
@@ -475,6 +489,8 @@ class TurnEngine:
         text = f"Model switched to {model_labels().get(model, model)}"
         try:
             caps = self.provider.capabilities(model)
+        # Wide on purpose: capabilities() is provider-defined and may touch the network; an
+        # unreachable provider must not block a model switch that is otherwise local.
         except Exception:
             caps = None
         if (
@@ -566,7 +582,7 @@ class TurnEngine:
                     fn = tc.get("function") or {}
                     try:
                         args = json.loads(fn.get("arguments") or "{}")
-                    except Exception:
+                    except (json.JSONDecodeError, TypeError):
                         args = {}
                     out.append(
                         ToolCall(id=tc.get("id"), name=fn.get("name"), arguments=args)
@@ -591,6 +607,8 @@ class TurnEngine:
             if self.budget is not None:
                 try:
                     over = self.budget.check()
+                # Boundary: this failure is reported or degraded by the caller by design; narrowing it
+                # would escalate one component's error into the whole session's.
                 except Exception:
                     over = None
                 if over:
@@ -664,6 +682,8 @@ class TurnEngine:
                 for ev in _flush_deltas():
                     yield ev
                 last_flush = time.monotonic()
+            # Boundary: this failure is reported or degraded by the caller by design; narrowing it
+            # would escalate one component's error into the whole session's.
             except Exception as exc:  # provider failure
                 # A raw context-overflow 400 (compaction mispredicted, e.g. the estimate
                 # path) routes into the compaction policy instead of surfacing. The retry
@@ -738,6 +758,8 @@ class TurnEngine:
                             turn.usage.input + turn.usage.output
                             + turn.usage.cache_read + turn.usage.cache_write
                         )
+                    # Boundary: this failure is reported or degraded by the caller by design; narrowing it
+                    # would escalate one component's error into the whole session's.
                     except Exception:
                         pass
 
@@ -835,6 +857,8 @@ class TurnEngine:
                 state = await asyncio.to_thread(_build)
                 failed = False
                 break
+            # Boundary: this failure is reported or degraded by the caller by design; narrowing it
+            # would escalate one component's error into the whole session's.
             except Exception:
                 failed = True
         if failed and self.question_asker is not None and self.is_attended and self.is_attended():
@@ -860,6 +884,8 @@ class TurnEngine:
                     state = await asyncio.to_thread(_build)
                     failed = False
                     break
+                # Boundary: this failure is reported or degraded by the caller by design; narrowing it
+                # would escalate one component's error into the whole session's.
                 except Exception:
                     continue
         if state is not None:
@@ -875,6 +901,8 @@ class TurnEngine:
                     if turns:
                         latest = max(t.get("seq", 0) for t in turns)
                         notice += f" File states are preserved in checkpoints (latest: #{latest})."
+                # Boundary: this failure is reported or degraded by the caller by design; narrowing it
+                # would escalate one component's error into the whole session's.
                 except Exception:
                     pass
             return notice
@@ -921,6 +949,7 @@ class TurnEngine:
                     chars=len(context_text),
                     digest=_trajectory.text_digest(context_text),
                 )
+        # Telemetry sink: the trajectory ledger must never break the work it is recording.
         except Exception:
             pass
 
@@ -934,6 +963,8 @@ class TurnEngine:
                     if self._cancel.is_set():
                         break
                     loop.call_soon_threadsafe(queue.put_nowait, ("chunk", chunk))
+            # Producer boundary: this runs on the provider thread; the only recovery is to stop
+            # pushing events.
             except Exception as exc:  # surfaced to the awaiting consumer
                 loop.call_soon_threadsafe(queue.put_nowait, ("error", exc))
             finally:
@@ -1379,6 +1410,8 @@ class TurnEngine:
                         "reason": "user approved via the deny card (one-shot, exact action)",
                     }
                 )
+            # Wide on purpose: the audit sink is a callback; a broken sink must not fail
+            # the approval the user just gave.
             except Exception:
                 pass
 
@@ -1420,6 +1453,7 @@ class TurnEngine:
                     cache_read=verdict.cache_read,
                     cache_write=verdict.cache_write,
                 )
+            # Telemetry sink: auditing must never break the action it is recording.
             except Exception:
                 pass  # shadow must never surface a failure
 
@@ -1754,6 +1788,8 @@ class TurnEngine:
         if cp is not None and tool_call.name in WRITE_TOOLS:
             try:
                 entry = cp.capture_before(tool_call.name, tool_call.arguments)
+            # Boundary: this failure is reported or degraded by the caller by design; narrowing it
+            # would escalate one component's error into the whole session's.
             except Exception:
                 entry = None
         # File safety checks (v1): read-before-write warning + staleness detection
@@ -1762,6 +1798,8 @@ class TurnEngine:
         if tool_call.name in WRITE_TOOLS:
             try:
                 file_warnings = self._file_safety_warnings(tool_call)
+            # Boundary: this failure is reported or degraded by the caller by design; narrowing it
+            # would escalate one component's error into the whole session's.
             except Exception:
                 file_warnings = []
             similarity_hint = self._check_write_similarity(tool_call)
@@ -1775,6 +1813,8 @@ class TurnEngine:
         if tr is not None:
             try:
                 span_id = tr.start_span("tool", tool_call.name)
+            # Boundary: this failure is reported or degraded by the caller by design; narrowing it
+            # would escalate one component's error into the whole session's.
             except Exception:
                 span_id = None
         try:
@@ -1787,6 +1827,9 @@ class TurnEngine:
                 arguments_chars=_trajectory.json_size(tool_call.arguments),
             )
             result = self.registry.execute(tool_call.name, tool_call.arguments)
+        # Wide on purpose: a tool can raise anything (provider error, subprocess failure,
+        # user code). The turn must record a failed tool result and keep going; narrowing
+        # this would turn one broken tool into a dead session.
         except Exception as exc:
             duration = int((time.monotonic() - started) * 1000)
             self._tool_spans[tool_call.id] = duration
@@ -1803,11 +1846,15 @@ class TurnEngine:
             if entry is not None:
                 try:
                     cp.discard(entry)
+                # Boundary: this failure is reported or degraded by the caller by design; narrowing it
+                # would escalate one component's error into the whole session's.
                 except Exception:
                     pass
             if span_id is not None:
                 try:
                     tr.finish(span_id, status="error", meta={"tool": tool_call.name, "duration_ms": duration})
+                # Boundary: this failure is reported or degraded by the caller by design; narrowing it
+                # would escalate one component's error into the whole session's.
                 except Exception:
                     pass
             return {"error": str(exc), "error_type": type(exc).__name__}, "error"
@@ -1825,11 +1872,15 @@ class TurnEngine:
         if entry is not None:
             try:
                 cp.note_write(entry)
+            # Boundary: this failure is reported or degraded by the caller by design; narrowing it
+            # would escalate one component's error into the whole session's.
             except Exception:
                 pass
         if span_id is not None:
             try:
                 tr.finish(span_id, status="ok", meta={"tool": tool_call.name, "duration_ms": duration})
+            # Boundary: this failure is reported or degraded by the caller by design; narrowing it
+            # would escalate one component's error into the whole session's.
             except Exception:
                 pass
         # Record reads (read-before-write tracking) and inject file warnings.
@@ -2022,6 +2073,7 @@ class TurnEngine:
         }
         try:
             self.audit_sink(payload)
+        # Telemetry sink: auditing must never break the action it is recording.
         except Exception:
             pass
 
@@ -2447,6 +2499,7 @@ class TurnEngine:
             return
         try:
             trajectory.record(event_kind, **data)
+        # Telemetry sink: the trajectory ledger must never break the work it is recording.
         except Exception:
             pass
 

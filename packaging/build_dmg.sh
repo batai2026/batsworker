@@ -12,7 +12,7 @@
 #   - A Python venv at .venv (repo root) with this package installed editable, plus the
 #     build-only deps:
 #       python3 -m venv .venv
-#       .venv/bin/pip install -e '.[bedrock]' pyinstaller tzdata typer
+#       .venv/bin/pip install -r requirements-build.lock && .venv/bin/pip install -e . --no-deps
 #     `typer` is needed only at BUILD time: PyInstaller walks the `mcp` package and
 #     `mcp.cli` calls sys.exit() at import if typer is absent, which aborts the freeze.
 #     (aisuite installs like any other dependency — git-pinned in pyproject.toml.)
@@ -76,6 +76,15 @@ fi
 echo "==> [1/5] PyInstaller: bundling openworker-server ($TRIPLE)"
 "$PLATFORM/.venv/bin/pyinstaller" --noconfirm --clean \
   --distpath "$HERE/dist" --workpath "$HERE/build" "$HERE/openworker-server.spec"
+
+# The shell (src-tauri/src/lib.rs) passes flags to this binary that only the Python CLI
+# defines. A bundle older than a CLI change still starts, then dies at launch with
+# "unrecognized arguments" -- nothing else in the build catches that, so compare the two
+# CLIs here and fail before the stale binary is staged.
+echo "==> [1.5/5] checking the bundled CLI against the Python CLI"
+"$PLATFORM/.venv/bin/python" "$PLATFORM/scripts/check_sidecar_cli.py" \
+  "$HERE/dist/openworker-server/openworker-server" \
+  || { echo "bundled sidecar CLI is stale (rebuild after CLI changes)" >&2; exit 1; }
 
 echo "==> [2/5] staging sidecar resources"
 # Onedir bundle (exe + _internal/) ships via Tauri `resources` as Contents/Resources/sidecar/

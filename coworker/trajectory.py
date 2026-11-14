@@ -131,14 +131,14 @@ def text_digest(text: str) -> str:
 def value_digest(value: Any) -> str:
     try:
         return sha256(_canonical_bytes(value)).hexdigest()
-    except Exception:
+    except (TypeError, ValueError):
         return sha256(repr(value).encode("utf-8")).hexdigest()
 
 
 def json_size(value: Any) -> int:
     try:
         return len(_canonical_bytes(value))
-    except Exception:
+    except (TypeError, ValueError):
         return len(repr(value).encode("utf-8"))
 
 
@@ -170,7 +170,7 @@ def outbound_snapshot(
     payload = messages or []
     try:
         encoded = _canonical_bytes(payload)
-    except Exception:
+    except (TypeError, ValueError):
         encoded = repr(payload).encode("utf-8", errors="replace")
     return {
         "model": str(model or ""),
@@ -268,7 +268,7 @@ class TrajectoryStore:
             if self._counts[session_id] > self.max_records:
                 try:
                     self._trim(session_id)
-                except Exception:
+                except (OSError, ValueError, TypeError):
                     pass  # trimming is housekeeping; never lose the just-written record
             return record
 
@@ -331,7 +331,9 @@ class SessionTrajectory:
                 input_digest=value_digest(input),
                 **fields,
             )
-        except Exception:
+        # Local store + serialisation only: a full disk or a value we cannot encode is the
+        # real surface. Anything else is a bug we want to see, not swallow.
+        except (OSError, ValueError, TypeError):
             pass
 
     def end_turn(self, *, status: str = "ok") -> None:
@@ -340,7 +342,7 @@ class SessionTrajectory:
     def record(self, event_kind: str, **data: Any) -> None:
         try:
             self.store.append(self.session_id, event_kind, data, state=self._state)
-        except Exception:
+        except (OSError, ValueError, TypeError):
             pass  # the ledger must never break a turn
 
     def record_code_exec(

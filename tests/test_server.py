@@ -400,7 +400,7 @@ def test_steer_session_requires_a_live_turn(tmp_path):
 
 
 def test_ws_rejects_oversized_message(tmp_path):
-    from coworker.server import app as app_mod
+    from coworker.server.routes import ws as ws_mod
     from coworker.attachments import MAX_ATTACHMENTS
 
     client = _client(tmp_path, [_text("should not run")])
@@ -409,19 +409,19 @@ def test_ws_rejects_oversized_message(tmp_path):
 
         # Oversized text → single input-rejected frame, no turn runs.
         ws.send_json(
-            {"type": "user_message", "text": "x" * (app_mod._MAX_MESSAGE_TEXT_CHARS + 1)}
+            {"type": "user_message", "text": "x" * (ws_mod.MAX_MESSAGE_TEXT_CHARS + 1)}
         )
         evt = ws.receive_json()
         assert evt["type"] == "input_rejected"
         assert "too long" in evt["data"]["error"].lower()
 
         # The ingress cap is the same cap the attachment builder enforces.
-        assert app_mod._MAX_ATTACHMENTS == MAX_ATTACHMENTS
+        assert MAX_ATTACHMENTS == MAX_ATTACHMENTS
         ws.send_json(
             {
                 "type": "user_message",
                 "text": "hi",
-                "attachments": ["a"] * (app_mod._MAX_ATTACHMENTS + 1),
+                "attachments": ["a"] * (MAX_ATTACHMENTS + 1),
             }
         )
         evt = ws.receive_json()
@@ -509,14 +509,14 @@ def test_ws_allows_only_one_inflight_turn_per_session(tmp_path):
 
 
 def test_ws_rate_limits_inbound_frames(tmp_path):
-    from coworker.server import app as app_mod
+    from coworker.server.routes import ws as ws_mod
     from starlette.websockets import WebSocketDisconnect
 
     client = _client(tmp_path, [])
     with pytest.raises(WebSocketDisconnect):
         with client.websocket_connect("/ws/session/rate") as ws:
             assert ws.receive_json()["type"] == "ready"
-            for _ in range(app_mod._WS_RATE_LIMIT_COUNT):
+            for _ in range(ws_mod.WS_RATE_LIMIT_COUNT):
                 ws.send_json({"type": "unknown"})
                 assert ws.receive_json()["type"] == "input_rejected"
             ws.send_json({"type": "unknown"})
@@ -535,7 +535,7 @@ def test_server_sets_explicit_websocket_frame_limit(tmp_path, monkeypatch):
 
     monkeypatch.setattr(server_run, "_ensure_ca_bundle", lambda: None)
     monkeypatch.setattr(server_run, "_exit_when_orphaned", lambda: None)
-    monkeypatch.setattr(server_run, "build_app", lambda *args: fake_app)
+    monkeypatch.setattr(server_run, "build_app", lambda *args, **kwargs: fake_app)
     monkeypatch.setitem(
         sys.modules,
         "uvicorn",
@@ -548,7 +548,7 @@ def test_server_sets_explicit_websocket_frame_limit(tmp_path, monkeypatch):
     server_run.main(["--cwd", str(tmp_path / "ws"), "--port", "8766"])
 
     assert seen["app"] is fake_app
-    assert seen["ws_max_size"] == server_run._WS_MAX_FRAME_BYTES
+    assert seen["ws_max_size"] == server_run.WS_MAX_FRAME_BYTES
 
 
 def test_standalone_server_token_file_is_user_only(tmp_path, monkeypatch):

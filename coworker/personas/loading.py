@@ -78,6 +78,8 @@ def git_clone(
         ["git", "clone", "--depth", "1", url, str(dest)],
         check=True,
         capture_output=True,
+        encoding="utf-8",
+        errors="replace",
     )
 
 

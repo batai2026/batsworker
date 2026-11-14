@@ -38,6 +38,13 @@ import aisuite as ai
 
 _IS_WINDOWS = sys.platform == "win32"
 
+# Text-mode subprocess IO must never rely on the locale's ANSI code page: on zh-CN
+# Windows (GBK/936) a child emitting UTF-8 bytes (git subjects, rustc/compiler output,
+# `dir` of a tree with non-ASCII names) raises UnicodeDecodeError inside the reader
+# thread and kills output capture mid-command. Pin UTF-8 and degrade with U+FFFD so a
+# garbled byte can never take down a session.
+UTF8_TEXT_IO = {"encoding": "utf-8", "errors": "replace"}
+
 # Foreground timeout bounds: long enough for installs/builds/test runs by default, capped so
 # a model-requested timeout can't wedge the turn for more than ten minutes.
 _DEFAULT_TIMEOUT = 120.0
@@ -96,6 +103,7 @@ class _BackgroundTask:
             text=True,
             bufsize=1,
             env=env,
+            **UTF8_TEXT_IO,
             **spawn_kwargs,
         )
         self._lock = threading.Lock()
@@ -207,6 +215,7 @@ class LocalExecutor(Executor):
             text=True,
             bufsize=1,
             env=self._env,
+            **UTF8_TEXT_IO,
             **spawn_kwargs,
         )
         self._queue: "queue.Queue[Optional[str]]" = queue.Queue()
@@ -391,6 +400,7 @@ class LocalExecutor(Executor):
                 ["pgrep", "-P", str(self._proc.pid)],
                 capture_output=True,
                 text=True,
+                **UTF8_TEXT_IO,
             )
             for pid in found.stdout.split():
                 try:
