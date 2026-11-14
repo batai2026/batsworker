@@ -50,6 +50,8 @@ def run(*args: str, timeout: int = 90) -> subprocess.CompletedProcess[str]:
         [PS, "-NoProfile", "-NonInteractive", "-File", str(SCRIPT), *args],
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         timeout=timeout,
     )
 

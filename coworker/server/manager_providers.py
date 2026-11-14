@@ -124,7 +124,14 @@ class ProvidersMixin:
             # Linux: zenity when present; otherwise the GUI's paste-a-path input remains.
             cmd = ["zenity", "--file-selection", "--directory"]
         try:
-            out = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+            out = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=300,
+            )
         except (OSError, subprocess.TimeoutExpired):
             return {"ok": False, "error": "no native folder picker available"}
         path = (out.stdout or "").strip()

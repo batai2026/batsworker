@@ -41,7 +41,14 @@ import uuid
 from pathlib import Path
 from typing import Any, Optional
 
-from .shell import Executor, LocalExecutor, _DEFAULT_TIMEOUT, _MAX_TIMEOUT, _NONINTERACTIVE_ENV
+from .shell import (
+    UTF8_TEXT_IO,
+    Executor,
+    LocalExecutor,
+    _DEFAULT_TIMEOUT,
+    _MAX_TIMEOUT,
+    _NONINTERACTIVE_ENV,
+)
 
 _IS_WINDOWS = sys.platform == "win32"
 
@@ -114,6 +121,7 @@ class DockerExecutor(Executor):
                 docker_cmd,
                 capture_output=True,
                 text=True,
+                **UTF8_TEXT_IO,
                 timeout=timeout,
                 env={**os.environ, **_NONINTERACTIVE_ENV},
             )
@@ -187,6 +195,7 @@ class DockerExecutor(Executor):
                 ["docker", *args],
                 capture_output=True,
                 text=True,
+                **UTF8_TEXT_IO,
                 timeout=timeout,
                 input=input,
                 env={**os.environ, **_NONINTERACTIVE_ENV},
@@ -469,6 +478,7 @@ def docker_available() -> bool:
         proc = subprocess.run(
             ["docker", "info", "--format", "{{.ServerVersion}}"],
             capture_output=True, text=True, timeout=_DOCKER_TIMEOUT,
+            **UTF8_TEXT_IO,
         )
         return proc.returncode == 0
     except (FileNotFoundError, subprocess.TimeoutExpired, OSError):

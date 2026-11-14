@@ -16,6 +16,8 @@ from typing import Any, Optional
 
 import aisuite as ai
 
+from .shell import UTF8_TEXT_IO
+
 # Per-OS application data directories. These are not build noise: on macOS 14+ merely
 # *descending* into ~/Library/Application Support (other apps' containers) trips the App
 # Data TCC protection and macOS shows "would like to access data from other apps" — an
@@ -118,7 +120,8 @@ def search_tools(workspace: str) -> list:
             cmd.append(".")
             try:
                 out = subprocess.run(
-                    cmd, capture_output=True, text=True, timeout=30, cwd=str(base)
+                    cmd, capture_output=True, text=True, timeout=30, cwd=str(base),
+                    **UTF8_TEXT_IO,
                 )
             except Exception as exc:
                 return {"error": f"grep failed: {exc}"}

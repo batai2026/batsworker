@@ -35,7 +35,14 @@ def missing_options(source_help: str, bundled_help: str) -> list[str]:
 
 def _help(argv: list[str]) -> str:
     """argparse writes help to stdout, but capture both so a crash still compares."""
-    proc = subprocess.run(argv, capture_output=True, text=True, timeout=120)
+    proc = subprocess.run(
+        argv,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        timeout=120,
+    )
     return proc.stdout + proc.stderr
 
 

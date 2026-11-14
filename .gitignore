@@ -26,3 +26,6 @@ reports/*.html
 # Local installer cache
 dists/
 
+# Local eval run artifact (CI uploads its own copy as a workflow artifact)
+eval-report.json
+

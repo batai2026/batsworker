@@ -181,6 +181,8 @@ def _run_guest_sync(
             stderr=subprocess.PIPE,
             text=True,
             bufsize=1,
+            encoding="utf-8",
+            errors="replace",
         )
     except FileNotFoundError:
         return {
