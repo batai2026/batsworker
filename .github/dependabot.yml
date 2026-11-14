@@ -1,0 +1,87 @@
+# Dependabot version updates.
+#
+# Why this file exists: every third-party action in .github/workflows/ is pinned to a
+# full commit SHA (38 refs, pinned 2026-11). A SHA pin is only safe if something moves it
+# forward -- otherwise the gate ages into a pile of unpatched action versions, which is
+# its own supply-chain problem. Dependabot is that something, and it rewrites the `# vN`
+# comment alongside the SHA so the pin stays readable.
+#
+# Scope note: this covers *version* updates. Vulnerability-driven upgrades stay on the
+# osv-scanner gate in dependency-audit.yml, which knows this project's accept-list and
+# reachability rules; turning those into Dependabot security PRs would swap that
+# judgement for a severity-only view.
+#
+# Deliberately absent: a "uv" entry for the Python graph. uv.lock exists and is
+# consistent (`uv lock --check` passes), but CI never reads it -- the CI installs
+# requirements-dev.lock, which is `uv export`ed from uv.lock by hand. Dependabot can
+# rewrite uv.lock but cannot re-run that export, so every PR it opened would touch a
+# file the gate does not install from: green CI, unchanged runtime. Python bumps stay
+# manual until the export step is automated (tracked in SECURITY.md's open items).
+
+version: 2
+updates:
+  # Actions. Grouped into one PR per week: 38 individual PRs would be noise, and they
+  # are all reviewed the same way (the diff is a SHA plus a version comment).
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    groups:
+      actions:
+        patterns: ["*"]
+    commit-message:
+      prefix: "ci"
+
+  # Desktop shell (Tauri frontend).
+  - package-ecosystem: "npm"
+    directory: "/surfaces/gui"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    groups:
+      npm-minor-patch:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+    commit-message:
+      prefix: "deps"
+    open-pull-requests-limit: 5
+
+  # Rust: the Tauri backend and the STT sidecar are separate crates with separate
+  # lockfiles, so they need separate entries. Minor + patch only -- a major of a Tauri
+  # or whisper binding changes behaviour this CI cannot see.
+  - package-ecosystem: "cargo"
+    directory: "/surfaces/gui/src-tauri"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    groups:
+      cargo-minor-patch:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+    commit-message:
+      prefix: "deps"
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: "cargo"
+    directory: "/stt"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    groups:
+      cargo-minor-patch:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+    commit-message:
+      prefix: "deps"
+    open-pull-requests-limit: 5
+
+  # The published image (python:3.12-slim base).
+  - package-ecosystem: "docker"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    commit-message:
+      prefix: "deps"
+    open-pull-requests-limit: 3
