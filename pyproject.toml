@@ -49,7 +49,16 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8", "pytest-asyncio", "httpx", "ruff>=0.17.3", "pytest-cov>=6"]
+# mypy: the Python type gate (tools/typecheck.py). Lives here because it is a
+# developer tool like ruff and pytest, not a runtime dependency.
+dev = [
+    "pytest>=8",
+    "pytest-asyncio",
+    "httpx",
+    "ruff>=0.17.3",
+    "pytest-cov>=6",
+    "mypy>=1.13",
+]
 # Inbound messaging listeners (outbound send_message needs only httpx, already a core dep).
 # aiohttp is slack-bolt's Socket Mode transport at runtime (and the FakeSlack test harness
 # drives the real handler) — declare it so CI installs it, not just transitively.
@@ -96,6 +105,24 @@ select = ["E4", "E7", "E9", "F"]
 "coworker/engine.py" = ["E402"]
 "coworker/permissions.py" = ["E402"]
 "coworker/server/app.py" = ["E402"]
+
+[tool.mypy]
+# The gate is tools/typecheck.py, not a bare `mypy` run: the tree carries a measured
+# backlog (see tools/typecheck_baseline.json), so "error count may not grow" is the
+# enforceable rule. These settings pin what that baseline was measured with.
+python_version = "3.12"
+check_untyped_defs = true
+warn_unused_ignores = false
+warn_redundant_casts = false
+# `--show-error-codes` matters: the baseline is per-file counts, and readers need the
+# code to tell a systemic pattern (96 x [index] on Optional dicts) from a real bug.
+show_error_codes = true
+# Deliberately off: these ask for types on code that is annotated ~90%, and turning
+# them on would produce thousands of style errors that hide the real ones.
+disallow_untyped_defs = false
+disallow_incomplete_defs = false
+ignore_missing_imports = true
+exclude = ['^(build|dist|dists|\.venv|venv)/']
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
