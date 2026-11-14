@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-11-14T03:32:59",
+  "generated_at": "2026-11-14T04:19:26",
   "workspace": "/home/runner/work/_temp/eval-ws",
   "turns": [
     1,
@@ -20,16 +20,16 @@
     {
       "harness": "minimal",
       "model": "scnet:SCNet-Max",
-      "session_id": "eval-minimal-scnet-scnet-max-0104d3",
+      "session_id": "eval-minimal-scnet-scnet-max-fdb891",
       "status": "ok",
       "error": null,
       "turns": [
         {
           "turn": 1,
           "status": "ok",
-          "duration_s": 9.554,
-          "digest": "15f14c74dce15ab57a147f9f1a23cc418aee305597026cf03a83fa9a390c35e0",
-          "bytes": 6196,
+          "duration_s": 6.432,
+          "digest": "968adddf89edb3310e357739c90479672acbdd0b2a18c155139990b988d2a6d3",
+          "bytes": 6199,
           "model": "scnet:SCNet-Max",
           "tools": [
             "list_files",
@@ -50,19 +50,19 @@
             "propose_plan"
           ],
           "requests": 2,
+          "first_bytes": 2752,
           "tool_calls": 2,
           "tool_names": [
             "list_files",
             "read_file"
-          ],
-          "first_bytes": 2752
+          ]
         },
         {
           "turn": 2,
           "status": "ok",
-          "duration_s": 2.537,
-          "digest": "57d588ec71f0ae2a0a2c8c6c9e14953676e3e1c90b64b5bd9c2d08a972c5f4b7",
-          "bytes": 3702,
+          "duration_s": 2.283,
+          "digest": "f0ddec0f21386435dd8b0e906e692e348dfde7435ec7f72a195207e806f98c5b",
+          "bytes": 3717,
           "model": "scnet:SCNet-Max",
           "tools": [
             "list_files",
@@ -83,16 +83,16 @@
             "propose_plan"
           ],
           "requests": 1,
+          "first_bytes": 3717,
           "tool_calls": 0,
-          "tool_names": [],
-          "first_bytes": 3702
+          "tool_names": []
         }
       ],
       "vs_baseline": [
         {
           "turn": 1,
-          "bytes": 6196,
-          "base_bytes": 6196,
+          "bytes": 6199,
+          "base_bytes": 6199,
           "bytes_delta": 0,
           "first_bytes": 2752,
           "base_first_bytes": 2752,
@@ -111,11 +111,11 @@
         },
         {
           "turn": 2,
-          "bytes": 3702,
-          "base_bytes": 3702,
+          "bytes": 3717,
+          "base_bytes": 3717,
           "bytes_delta": 0,
-          "first_bytes": 3702,
-          "base_first_bytes": 3702,
+          "first_bytes": 3717,
+          "base_first_bytes": 3717,
           "first_delta": 0,
           "tool_calls": 0,
           "base_tool_calls": 0,
@@ -124,21 +124,54 @@
           "tools_match": true
         }
       ],
-      "recorded_at": "2026-11-14T03:32:59"
+      "recorded_at": "2026-11-14T04:19:26"
     },
     {
       "harness": "minimal",
       "model": "unisound:u2-flash",
-      "session_id": "eval-minimal-unisound-u2-flash-ec0cba",
+      "session_id": "eval-minimal-unisound-u2-flash-a99397",
       "status": "ok",
       "error": null,
       "turns": [
         {
           "turn": 1,
           "status": "ok",
-          "duration_s": 2.085,
-          "digest": "13ad877a9e4688df8de72620b466c43181f5acde135dadbc368b0defd705ab8f",
-          "bytes": 2752,
+          "duration_s": 7.295,
+          "digest": "13e3384875ef17668a0afcd32e85c4b6ada1cb91de9ccf7092b76a8f169b966a",
+          "bytes": 9438,
+          "model": "unisound:u2-flash",
+          "tools": [
+            "list_files",
+            "write_file",
+            "apply_unified_diff",
+            "apply_patch",
+            "replace_in_file",
+            "read_file",
+            "run_shell",
+            "shell_task_output",
+            "shell_task_kill",
+            "request_directory",
+            "request_tool",
+            "web_search",
+            "web_fetch",
+            "load_skill",
+            "save_skill",
+            "propose_plan"
+          ],
+          "requests": 3,
+          "first_bytes": 2752,
+          "tool_calls": 2,
+          "tool_names": [
+            "list_files",
+            "read_file"
+          ]
+        },
+        {
+          "turn": 2,
+          "status": "ok",
+          "duration_s": 2.595,
+          "digest": "30d88b5d4418edada2513893d2e186698349eef0bc623a1a02e140aa42c03960",
+          "bytes": 3834,
           "model": "unisound:u2-flash",
           "tools": [
             "list_files",
@@ -159,97 +192,61 @@
             "propose_plan"
           ],
           "requests": 1,
+          "first_bytes": 3834,
           "tool_calls": 0,
-          "tool_names": [],
-          "first_bytes": 2752
-        },
-        {
-          "turn": 2,
-          "status": "ok",
-          "duration_s": 12.413,
-          "digest": "7ca869b28f6858dbfeea3d89b815ac35e3d0343404315efb5857640220c60c1f",
-          "bytes": 13600,
-          "model": "unisound:u2-flash",
-          "tools": [
-            "list_files",
-            "write_file",
-            "apply_unified_diff",
-            "apply_patch",
-            "replace_in_file",
-            "read_file",
-            "run_shell",
-            "shell_task_output",
-            "shell_task_kill",
-            "request_directory",
-            "request_tool",
-            "web_search",
-            "web_fetch",
-            "load_skill",
-            "save_skill",
-            "propose_plan"
-          ],
-          "requests": 4,
-          "tool_calls": 3,
-          "tool_names": [
-            "list_files",
-            "list_files",
-            "read_file"
-          ],
-          "first_bytes": 0
+          "tool_names": []
         }
       ],
       "vs_baseline": [
         {
           "turn": 1,
-          "bytes": 2752,
-          "base_bytes": 2752,
+          "bytes": 9438,
+          "base_bytes": 9438,
           "bytes_delta": 0,
           "first_bytes": 2752,
           "base_first_bytes": 2752,
+          "first_delta": 0,
+          "tool_calls": 2,
+          "base_tool_calls": 2,
+          "tools": [
+            "list_files",
+            "read_file"
+          ],
+          "base_tools": [
+            "list_files",
+            "read_file"
+          ],
+          "tools_match": true
+        },
+        {
+          "turn": 2,
+          "bytes": 3834,
+          "base_bytes": 3834,
+          "bytes_delta": 0,
+          "first_bytes": 3834,
+          "base_first_bytes": 3834,
           "first_delta": 0,
           "tool_calls": 0,
           "base_tool_calls": 0,
           "tools": [],
           "base_tools": [],
           "tools_match": true
-        },
-        {
-          "turn": 2,
-          "bytes": 13600,
-          "base_bytes": 13600,
-          "bytes_delta": 0,
-          "first_bytes": 0,
-          "base_first_bytes": 0,
-          "first_delta": 0,
-          "tool_calls": 3,
-          "base_tool_calls": 3,
-          "tools": [
-            "list_files",
-            "list_files",
-            "read_file"
-          ],
-          "base_tools": [
-            "list_files",
-            "list_files",
-            "read_file"
-          ],
-          "tools_match": true
         }
       ],
-      "recorded_at": "2026-11-14T03:32:59"
+      "recorded_at": "2026-11-14T04:19:26"
     },
     {
       "harness": "minimal",
       "model": "deepseek:deepseek-v4-pro",
-      "session_id": "eval-minimal-deepseek-deepseek-v4-pro-266fab",
+      "session_id": "eval-minimal-deepseek-deepseek-v4-pro-9af94f",
       "status": "ok",
       "error": null,
       "turns": [
         {
           "turn": 1,
           "status": "ok",
-          "duration_s": 0.832,
-          "digest": "13ad877a9e4688df8de72620b466c43181f5acde135dadbc368b0defd705ab8f",
+          "duration_s": 0.718,
+          "digest": "a1474a4387580f3513c4a9ad46b5c1a879ba90223d4936b178bc69a43972908d",
           "bytes": 2752,
           "model": "deepseek:deepseek-v4-pro",
           "tools": [
@@ -271,15 +268,15 @@
             "propose_plan"
           ],
           "requests": 1,
+          "first_bytes": 2752,
           "tool_calls": 0,
-          "tool_names": [],
-          "first_bytes": 2752
+          "tool_names": []
         },
         {
           "turn": 2,
           "status": "ok",
-          "duration_s": 0.623,
-          "digest": "ea662564956441ec53335e23d66c280d3b0d767057bd45fd43cc6ff87ef0b44f",
+          "duration_s": 0.596,
+          "digest": "41942bbb3f34d342601044ca6cfa34bae7abc0460aeeb3fc307a3713d7eb9323",
           "bytes": 2821,
           "model": "deepseek:deepseek-v4-pro",
           "tools": [
@@ -301,9 +298,9 @@
             "propose_plan"
           ],
           "requests": 1,
+          "first_bytes": 2821,
           "tool_calls": 0,
-          "tool_names": [],
-          "first_bytes": 2821
+          "tool_names": []
         }
       ],
       "vs_baseline": [
@@ -336,7 +333,7 @@
           "tools_match": true
         }
       ],
-      "recorded_at": "2026-11-14T03:32:59"
+      "recorded_at": "2026-11-14T04:19:26"
     }
   ],
   "baseline": {
