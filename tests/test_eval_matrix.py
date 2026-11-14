@@ -107,6 +107,36 @@ async def test_run_matrix_stub_runs_code_mode(tmp_path):
     assert "run_shell" not in turn["tools"]
 
 
+@pytest.mark.asyncio
+async def test_run_matrix_seeds_the_workspace_from_the_case(tmp_path):
+    """用例自带 workspace/ 模板会铺进运行目录。
+
+    存在的理由：空目录里「列出文件」可以被模型直接回一句「空的」，于是同一个用例有
+    时有工具调用、时没有（deepseek 就这样间歇性失败）。铺一个内容固定的文件后，
+    「读 notes.txt」非调工具不可，形状才稳定。
+    """
+    seed = tmp_path / "seed"
+    (seed / "sub").mkdir(parents=True)
+    (seed / "notes.txt").write_text("seed: 7f3c1a\n", encoding="utf-8")
+    (seed / "sub" / "a.txt").write_text("x\n", encoding="utf-8")
+    workspace = tmp_path / "ws"
+    workspace.mkdir()
+
+    report = await run_matrix(
+        turns=[RecordedTurn(turn=1, input_text="hello")],
+        models=["stub:model"],
+        harness_names=["minimal"],
+        workspace=workspace,
+        provider_factory=matrix._stub_provider_factory(),
+        work_dir=tmp_path / "work",
+        seed_dir=seed,
+    )
+
+    assert (workspace / "notes.txt").read_text(encoding="utf-8") == "seed: 7f3c1a\n"
+    assert (workspace / "sub" / "a.txt").read_text(encoding="utf-8") == "x\n"
+    assert report["cells"][0]["status"] == "ok"
+
+
 def test_in_git_worktree_flags_the_repo_and_spares_a_temp_dir(tmp_path):
     """基线字节里含 git 快照，所以只有“在不在仓库里”能解释 Windows/CI 的差几百字节。"""
     assert matrix._in_git_worktree(Path.cwd()) is True

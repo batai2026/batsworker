@@ -218,6 +218,20 @@ def _tool_calls_by_turn(records: list[dict[str, Any]]) -> dict[int, list[str]]:
     return out
 
 
+def _apply_seed(workspace: Path, seed: Path) -> None:
+    """把用例自带的 workspace 模板铺进运行目录。
+
+    逐 cell 重铺，内容由仓库文件定死，所以字节稳定（不写时间戳、不写随机值）。
+    """
+    for path in sorted(seed.rglob("*")):
+        target = workspace / path.relative_to(seed)
+        if path.is_dir():
+            target.mkdir(parents=True, exist_ok=True)
+            continue
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(path.read_bytes())
+
+
 async def _run_cell(
     spec: HarnessSpec,
     model: str,
@@ -311,6 +325,7 @@ async def run_matrix(
     work_dir: str | Path | None = None,
     harness_specs: Optional[dict[str, HarnessSpec]] = None,
     timeout: float = DEFAULT_TURN_TIMEOUT,
+    seed_dir: str | Path | None = None,
 ) -> dict[str, Any]:
     """跑完整矩阵，返回（并可选写出）报告字典。
 
@@ -322,6 +337,7 @@ async def run_matrix(
     if unknown:
         raise ValueError(f"unknown harness: {', '.join(unknown)}")
     ws = Path(workspace).expanduser().resolve()
+    seed = Path(seed_dir).expanduser().resolve() if seed_dir else None
     factory = provider_factory or _real_provider_factory()
     base = Path(work_dir).expanduser() if work_dir else Path(_temp_dir())
     base.mkdir(parents=True, exist_ok=True)
@@ -330,6 +346,8 @@ async def run_matrix(
     for name in harness_names:
         spec = specs[name]
         for model in models:
+            if seed is not None and seed.is_dir():
+                _apply_seed(ws, seed)
             cells.append(
                 await _run_cell(
                     spec,
@@ -369,6 +387,9 @@ def _temp_dir() -> Path:
 
 
 DEFAULT_MAX_BYTES_RATIO = 0.10
+# 用例自带的 workspace 模板目录（相对 case 目录）：里面的文件在每轮开跑前铺进 workspace。
+# 目的在于让第一轮**非调工具不可**：空目录里「列出文件」可以被模型直接回一句「空的」。
+SEED_DIR = "workspace"
 
 
 def _in_git_worktree(path: Path) -> bool:
@@ -713,10 +734,15 @@ def main(argv: Optional[list[str]] = None) -> int:
             return 2
 
     baseline: Optional[dict[str, Any]] = None
+    seed_dir: Optional[Path] = None
     if args.case:
         from .capture import load_case  # 延迟导入：capture 顶层依赖本模块
 
         turns, baseline = load_case(args.case)
+        # 用例目录里的 workspace/ 模板：铺进运行目录，让第一轮有东西可列（见 SEED_DIR）。
+        candidate = Path(args.case).expanduser() / SEED_DIR
+        if candidate.is_dir():
+            seed_dir = candidate
         if args.baseline_file:
             base_path = Path(args.baseline_file).expanduser()
             try:
@@ -770,6 +796,7 @@ def main(argv: Optional[list[str]] = None) -> int:
             auto_approve=args.auto_approve,
             out_path=args.out,
             timeout=args.timeout,
+            seed_dir=seed_dir,
         )
     )
     if args.write_baseline:
