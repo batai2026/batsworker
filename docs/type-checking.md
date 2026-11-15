@@ -47,16 +47,59 @@ what is true and enforceable *now*:
    earns its keep: a careless edit in a well-typed module is caught immediately.
 3. **No file may exceed its baseline count**, though it may improve.
 
-Adding a new module is free as long as it type-checks. The clean set therefore grows
-by default.
+Adding a new module is free as long as it type-checks, and it is protected from then
+on: the enforcement sets are recomputed from the per-platform records on every
+`--update`.
 
 ### How platform differences are handled
 
-Rule 2 is the load-bearing one, and it is platform-independent: a file counts as clean
-only if it is clean on **every** platform measured so far (`clean_files` is an
-intersection). Per-file caps in `dirty_files` hold the **higher** count across
-platforms, so a platform difference never reads as a regression, while a real one still
-fires. Totals are recorded per platform.
+Rule 2 is the load-bearing one, and it is platform-independent in the sense that it
+holds on every platform -- but each run is judged against **its own** platform's record.
+The code branches on `sys.platform` (`os.getpgid`/`killpg` are POSIX-only;
+`CREATE_NEW_PROCESS_GROUP`, `CTRL_BREAK_EVENT` and `WinDLL` are Windows-only), so mypy
+legitimately reports a few different errors per platform. Measured: **398 on Windows,
+399 on Linux**. A gate on the raw count would be red on one platform no matter what it
+was set to -- see below.
+
+The baseline therefore stores each platform's **own** measurement:
+
+```json
+{
+  "platforms": {
+    "win32": {"total_errors": 398, "clean_files": [...], "dirty_files": {...}},
+    "linux": {"total_errors": 399, "clean_files": [...], "dirty_files": {...}}
+  }
+}
+```
+
+A run compares against the record for the platform it measured, so:
+
+| | compared against |
+|---|---|
+| clean set, per-file ceilings, total | this platform's own record |
+| ...when this platform has no record yet | the merged view (and the run says so) |
+
+Two mistakes are worth recording, because both looked correct:
+
+- **Enforcing the merged view on every platform leaves a hole.** A file clean on win32
+  and dirty on linux is absent from the merged clean set, so a *win32-only* error in it
+  passed unnoticed -- the gate was blind precisely where the platforms disagree. That is
+  why enforcement is per platform, not merged.
+- **Reporting against the merged view contradicts `--update`.** The gate said "newly
+  clean, run `--update` to lock that in" for files that were merely clean on the platform
+  being run. Following that advice adds the file to *this* platform's clean set and then
+  fails the next check on the platform that has the error. Reporting now uses the same
+  record as enforcement, and names the cross-platform gap explicitly.
+
+An earlier single-level layout stored the merged values directly, which could not even
+express the distinction. It silently broke three further things, each now pinned by a
+test in `tests/test_typecheck_gate.py`:
+
+- `--update` kept `max(old, new)` per file, so **an improvement could never be locked
+  in** -- the gate printed "run --update to lock that in" and then ignored it;
+- `clean_files` was merged by intersection against the stored list, so **a newly added
+  clean module was never added to the enforced set**, contradicting the promise above;
+- **deleting** a module read as a regression.
 
 ## The `ManagerBase` contract
 
@@ -112,9 +155,22 @@ interpreter you ran it with.
 
 ## Lowering the baseline
 
-`--update` rewrites the baseline from the current state. Use it when:
+`--update` records **this platform's** measurement and rewrites the baseline. Use it
+when:
 
 - you fixed a batch of errors and want to prevent them coming back;
 - you deliberately accepted a new error (rare -- explain it in the commit message).
 
+It only replaces the record for the platform you ran it on; the other platform's record
+is left alone, so running it on Windows cannot erase what Linux last measured. To lower
+both, run it on both (or as `--platform linux` from one machine).
+
 Never use it to turn a red build green. That is how a ratchet becomes decoration.
+
+## Pinned by tests
+
+`tests/test_typecheck_gate.py` exercises the gate's own logic with `mypy` stubbed out:
+the three enforcement rules, the newly-added-module case, improvement locking, module
+deletion, the per-platform versus merged comparison, and that forbidding a false
+"lock that in" message. The gate decides whether every branch is green, so a silent
+logic bug there is worse than no gate at all.
