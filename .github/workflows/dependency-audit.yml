@@ -9,15 +9,63 @@
 #   * pull_request — compares against the base branch and fails ONLY on
 #     vulnerabilities the PR adds. Existing accepted debt never blocks an
 #     unrelated change, so this check can be made blocking immediately.
-#   * schedule/push — full backlog scan, reported to the Security tab. It stays
-#     non-blocking (fail-on-vuln: false) until the npm tooling PR and the Rust
-#     patch PR land; flip that to true once the backlog is cleared.
+#   * schedule/push — full backlog scan, reported to the Security tab. This was
+#     non-blocking (fail-on-vuln: false) only until the backlog drained, and it is
+#     now blocking. Before flipping it I ran the job's exact invocation
+#     (--config=osv-scanner.toml --recursive ./) with osv-scanner 2.7.1: "No
+#     issues found", exit 0.
 #
-# Coverage note: the scan covers surfaces/gui/package-lock.json,
-# stt/Cargo.lock and surfaces/gui/src-tauri/Cargo.lock. Python has no lockfile
-# in this repo — pyproject.toml carries version floors, so CI resolves whatever
-# is latest on each run; the equivalent control there is the floor itself
-# (e.g. pypdf>=6.21.4), enforced at review time.
+#     What "drained" means here, measured rather than assumed. On the parent
+#     commit (rustix 1.1.4) the scan reports 21 rows across 13 packages; the
+#     accept-list covers 20 of them and RUSTSEC-2026-0486 is the one gap, which is
+#     exactly why this commit is stacked on the rustix upgrade. After that bump:
+#     20 rows across 12 packages, all accepted, 0 reported-but-unaccepted and 0
+#     accepted-but-unmatched.
+#
+#     Counting convention matters when quoting this, so: osv-scanner's table
+#     summary says "13 packages affected by 19 known vulnerabilities" for the
+#     same tree where --format=json returns 21 entries. The table collapses
+#     aliases (the zip pair GHSA-q7v9-x93c-xqv3 / RUSTSEC-2026-0429 counts once);
+#     the JSON counts one entry per listed row. The 21 / 20 figures here are the
+#     JSON convention, because that is what the accept-list rows are matched
+#     against.
+#
+#     The scanner prints "unused ignores" for 2 rows, and that warning is worth
+#     understanding before anyone treats it as a hole: either ID of an alias pair
+#     suppresses BOTH listings (tested: a config with only RUSTSEC-2026-0429 also
+#     removes the GHSA-q7v9 listing, and vice versa), so the second row of each
+#     pair is redundant rather than missing. Harmless, but the two extra rows can
+#     be deleted to silence the warning.
+#
+#     The one finding that was NOT accepted: RUSTSEC-2026-0486 on rustix 1.1.4.
+#     It landed after the 2026-11-08 audit and has a released patch, so it was
+#     upgraded (rustix 1.1.6 + xattr 1.7.0) instead of accepted. This branch is
+#     stacked on that upgrade and cannot go green without it -- merging the flag
+#     flip alone turns the first scheduled run red.
+#
+#     Two things about the accept-list that justify making the job blocking:
+#     it only holds unfixable debt (every real fix in it is a major owned by an
+#     upstream), and every row is dated. The expiry is checked, not assumed: a
+#     row dated in the past makes its finding reappear and the scan exit 1, so a
+#     lapsed acceptance turns this job red rather than rotting quietly.
+#
+# Note on rustix/xattr pairing, for whoever bumps these next: rustix 1.1.6 changed
+# what a zero-length xattr buffer means -- it used to ask the OS for the size, now
+# it returns nothing and the size comes from the new *_query functions. xattr
+# 1.6.1 does its size query with the old idiom (&mut []), so 1.6.1 + rustix 1.1.6
+# compiles and then reads any attribute over 4 KiB as empty. xattr 1.7.0 declares
+# rustix 1.1.6 and calls the *_query functions. Bump them together; nothing at
+# build time catches the bad pairing.
+#
+# Coverage note: the scan covers surfaces/gui/package-lock.json (565 packages),
+# stt/Cargo.lock (173), surfaces/gui/src-tauri/Cargo.lock (558) and uv.lock (127,
+# as enumerated by osv-scanner --all-packages). Python IS covered, through
+# uv.lock. Two caveats on that,
+# neither of which this job can detect: the lock includes dev and optional
+# extras, so it overstates what ships; and CI installs requirements-dev.lock,
+# which is `uv export`ed from uv.lock by hand, so a lock that drifts from that
+# export is scanned but not installed from. The floors in pyproject.toml
+# (e.g. pypdf>=6.21.4) remain the review-time control for the latter.
 
 name: Dependency audit
 
@@ -53,4 +101,8 @@ jobs:
         --config=osv-scanner.toml
         --recursive
         ./
-      fail-on-vuln: false
+      # Blocking. Verified by running this exact invocation locally: 0 results,
+      # exit 0, on the tree that carries the rustix 1.1.6 bump this branch is
+      # stacked on. Every accepted entry is expiry-dated, so a stale acceptance
+      # turns this job red instead of silently rotting.
+      fail-on-vuln: true
