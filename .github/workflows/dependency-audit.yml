@@ -9,11 +9,19 @@
 #   * pull_request — compares against the base branch and fails ONLY on
 #     vulnerabilities the PR adds. Existing accepted debt never blocks an
 #     unrelated change, so this check can be made blocking immediately.
-#   * schedule/push — full backlog scan, reported to the Security tab. This was
-#     non-blocking (fail-on-vuln: false) only until the backlog drained, and it is
-#     now blocking. Before flipping it I ran the job's exact invocation
-#     (--config=osv-scanner.toml --recursive ./) with osv-scanner 2.7.1: "No
-#     issues found", exit 0.
+#   * schedule/push — full backlog scan, reported to the Security tab. Non-blocking
+#     on this branch (fail-on-vuln: false), rolled back from the blocking flip.
+#     It had been flipped to true because a local run of the job's exact invocation
+#     (--config=osv-scanner.toml --recursive ./, osv-scanner 2.7.1) gave "No issues
+#     found", exit 0.
+#
+#     What that flip could not cover: no scheduled run of this job has ever
+#     executed. All 18 runs of the workflow to date are pull_request events, and
+#     full-backlog skips those, so the first cron firing is genuinely its first
+#     execution. A gate that has never run, holding a team's merges hostage, is a
+#     worse trade than a gate that reports and is watched for one cycle. Restore
+#     fail-on-vuln: true once a scheduled run passes, with that run's URL in the
+#     commit message.
 #
 #     What "drained" means here, measured rather than assumed. On the parent
 #     commit (rustix 1.1.4) the scan reports 21 rows across 13 packages; the
@@ -43,11 +51,12 @@
 #     stacked on that upgrade and cannot go green without it -- merging the flag
 #     flip alone turns the first scheduled run red.
 #
-#     Two things about the accept-list that justify making the job blocking:
+#     Two things about the accept-list that made the job a blocking candidate:
 #     it only holds unfixable debt (every real fix in it is a major owned by an
 #     upstream), and every row is dated. The expiry is checked, not assumed: a
 #     row dated in the past makes its finding reappear and the scan exit 1, so a
-#     lapsed acceptance turns this job red rather than rotting quietly.
+#     lapsed acceptance turns this job red rather than rotting quietly. That is the
+#     property to rely on once the gate is switched back on.
 #
 # Note on rustix/xattr pairing, for whoever bumps these next: rustix 1.1.6 changed
 # what a zero-length xattr buffer means -- it used to ask the OS for the size, now
@@ -101,8 +110,9 @@ jobs:
         --config=osv-scanner.toml
         --recursive
         ./
-      # Blocking. Verified by running this exact invocation locally: 0 results,
-      # exit 0, on the tree that carries the rustix 1.1.6 bump this branch is
-      # stacked on. Every accepted entry is expiry-dated, so a stale acceptance
-      # turns this job red instead of silently rotting.
-      fail-on-vuln: true
+      # Rolled back to non-blocking on 2026-11-16. The blocking flip rested on a
+      # local scan only; no scheduled run of this job has ever executed, and this
+      # workflow does not fire on fork/PR events for this branch (pull_request is
+      # scoped to main/master). See the header comment for what to check before
+      # turning it back on.
+      fail-on-vuln: false
