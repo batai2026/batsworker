@@ -201,6 +201,9 @@ class SlackAdapter(BasePlatformAdapter):
         try:
             auth = await self._app.client.auth_test()
             self._bot_user_id = auth.get("user_id")
+        # SDK boundary: slack_sdk raises SlackClientError for API errors but lets aiohttp's
+        # transport errors through un-wrapped, so there is no single base type to name. A
+        # failed probe means "not connected", which the caller surfaces.
         except Exception:
             logger.exception("slack auth_test failed")
             return False
@@ -310,6 +313,7 @@ class SlackAdapter(BasePlatformAdapter):
                 or u.get("real_name")
                 or u.get("name")
             )
+        # SDK boundary, best-effort: a display name is decoration; None is a fine answer.
         except Exception:
             name = None
         if name:
@@ -391,6 +395,8 @@ class SlackAdapter(BasePlatformAdapter):
             await self._app.client.chat_update(
                 channel=chat_id, ts=message_id, text=text, blocks=[]
             )
+        # SDK boundary, best-effort: the message is already posted; failing to strip its
+        # buttons is a cosmetic miss, not an error the caller can act on.
         except Exception:
             logger.debug("slack chat_update failed", exc_info=True)
 

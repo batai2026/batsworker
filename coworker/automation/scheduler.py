@@ -76,6 +76,8 @@ class Scheduler:
         # First pass = run-once-catch-up for anything missed while the server was down.
         try:
             await self._tick(trigger="catchup")
+        # Loop boundary: one failed catch-up pass must not stop the scheduler from running the
+        # next tick; the error is logged and the loop continues.
         except Exception:
             logger.exception("scheduler catch-up failed")
         while True:
@@ -115,6 +117,8 @@ class Scheduler:
             return []
         try:
             ctx = self.event_context() or {}
+        # Callback boundary: the host supplies the event context; a broken provider means "no
+        # events this tick", not "stop the scheduler".
         except Exception:
             logger.exception("event context provider failed")
             return []
@@ -130,6 +134,8 @@ class Scheduler:
                 met, detail, snapshot = evaluate(
                     trigger, task=task, ctx=ctx, state=dict(task.trigger_state or {}), now=now
                 )
+            # Per-task boundary: one standing goal with a broken trigger expression must not
+            # stop the other tasks from being evaluated this tick.
             except Exception:
                 logger.exception("event evaluation failed for %s", task.id)
                 continue
@@ -167,6 +173,9 @@ class Scheduler:
         self._running_ids.add(task.id)
         try:
             run = await self.runner(task, trigger, trigger_detail=trigger_detail)
+        # Task boundary: the runner starts a whole agent turn — providers, tools, approvals. Its
+        # failure is recorded as this run's error; swallowing the type here is what keeps one
+        # bad task from taking the scheduler with it.
         except Exception as exc:
             logger.exception("task %s run failed", task.id)
             run = TaskRun(

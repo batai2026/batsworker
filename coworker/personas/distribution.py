@@ -145,7 +145,7 @@ def fetch_catalog(
             cached = json.loads(cache_path.read_text(encoding="utf-8"))
             if cached.get("url") == url:
                 return {**cached["data"], "stale": True}
-        except Exception:
+        except (OSError, ValueError, TypeError, KeyError):
             pass
         raise CatalogError(f"catalog fetch failed: {exc}") from exc
 

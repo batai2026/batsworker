@@ -92,7 +92,7 @@ def _pdf_bytes(file_data: str) -> Optional[bytes]:
         return None
     try:
         return base64.b64decode(file_data[len(prefix) :], validate=False)
-    except Exception:
+    except ValueError:
         return None
 
 

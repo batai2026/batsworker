@@ -60,6 +60,7 @@ New to the codebase? Read in roughly this order:
 | [user-manual-zh.md](user-manual-zh.md) | 用户手册（中文）：从快速上手到全部功能的操作指南 |
 | [worklog-2026-10-01.md](archive/worklog-2026-10-01.md) | 工作总结：项目分析 · 设计文档 · GUI 中文化 · 质量护栏 · 本地编译（2026-09-27 → 10-01） |
 | [worklog-2026-10-25.md](archive/worklog-2026-10-25.md) | 工作总结：登录差异 · 演示生成技能 · 浏览器面板 · 模板/插件市场 · 明文记忆 · PWA · 并行子代理 · 威胁模型闭环 · 雇佣落地页 |
+| [worklog-2026-11-12.md](archive/worklog-2026-11-12.md) | 过程记录：`coworker/server/app.py` 路由拆分（P2 · 方案 A）——基线先行、11 个提交、6 条表面守卫、WS 帧矩阵 + 表驱动分发、8 个搬移缺陷复盘 |
 | [extensions-and-marketplace.md](design/extensions-and-marketplace.md) | Extensions & marketplaces: demo→skill, browser panel, template/plugin marketplaces, plain-text memory, PWA, parallel subagents, threat model + finding closure, hire landing pages |
 | [maturity-roadmap.md](design/maturity-roadmap.md) | Maturity roadmap: sandbox GUI, App.tsx split, Windows CI/test fixes, new-feature e2e, P2 follow-ups |
 | [file-sandbox.md](design/file-sandbox.md) | Design proposal: routing file tools through the Docker sandbox (workspace-only, read-only root, no network) |

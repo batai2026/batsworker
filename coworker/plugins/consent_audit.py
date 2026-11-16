@@ -68,7 +68,7 @@ def read(limit: int = 100, id: Optional[str] = None) -> list[dict[str, Any]]:
     for line in raw.splitlines():
         try:
             row = json.loads(line)
-        except Exception:
+        except (json.JSONDecodeError, TypeError):
             continue  # a torn line must not void the rest of the ledger
         if not isinstance(row, dict):
             continue

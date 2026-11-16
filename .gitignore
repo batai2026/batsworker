@@ -12,10 +12,20 @@ dist/
 .drill-state/
 .drill-tmp/
 
+# Ad-hoc verification scratch: throwaway scripts and logs from manual checks.
+# Nothing here is source, and it must never be picked up by a `git add -A`.
+.tmp-verify/
+
+# Review reports are versioned as markdown; the HTML renders are build output.
+reports/*.html
+
 # Local secrets (live-smoke BYO keys) — never committed
 .env
 .claude/settings.local.json
 
 # Local installer cache
 dists/
+
+# Local eval run artifact (CI uploads its own copy as a workflow artifact)
+eval-report.json
 

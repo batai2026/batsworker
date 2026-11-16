@@ -43,6 +43,12 @@ from ..trajectory import SessionTrajectory, TrajectoryStore
 # installed_specs() 在运行时合并。
 HARNESSES: dict[str, HarnessSpec] = builtin_specs()
 
+# Per-turn wall clock (seconds). Short enough that an unreachable endpoint surfaces a
+# `timeout` row in the report instead of an hour of silence; long enough for a normal agent
+# turn with one tool round trip. The provider SDKs default to a 600s request timeout with 2
+# retries, which is why a dead endpoint used to look like a silent job.
+DEFAULT_TURN_TIMEOUT = 180.0
+
 
 @dataclass
 class RecordedTurn:
@@ -185,6 +191,13 @@ def _requests_by_turn(records: list[dict[str, Any]]) -> dict[int, dict[str, int]
             turn = 0
         data = row.get("data") or {}
         slot = out.setdefault(turn, {"requests": 0, "bytes": 0})
+        if slot["requests"] == 0:
+            # 本轮第一次请求的字节量 = 我们构造的提示 + 工具定义，与模型接下来调不调
+            # 工具无关。这是真实模型矩阵里唯一“由我们控制”的那个数。
+            try:
+                slot["first_bytes"] = int(data.get("bytes") or 0)
+            except (TypeError, ValueError):
+                slot["first_bytes"] = 0
         slot["requests"] += 1
         try:
             slot["bytes"] += int(data.get("bytes") or 0)
@@ -212,6 +225,20 @@ def _tool_calls_by_turn(records: list[dict[str, Any]]) -> dict[int, list[str]]:
     return out
 
 
+def _apply_seed(workspace: Path, seed: Path) -> None:
+    """把用例自带的 workspace 模板铺进运行目录。
+
+    逐 cell 重铺，内容由仓库文件定死，所以字节稳定（不写时间戳、不写随机值）。
+    """
+    for path in sorted(seed.rglob("*")):
+        target = workspace / path.relative_to(seed)
+        if path.is_dir():
+            target.mkdir(parents=True, exist_ok=True)
+            continue
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(path.read_bytes())
+
+
 async def _run_cell(
     spec: HarnessSpec,
     model: str,
@@ -221,6 +248,7 @@ async def _run_cell(
     provider_factory: Callable[[str, HarnessSpec], ProviderClient],
     auto_approve: bool,
     work_dir: Path,
+    timeout: float = DEFAULT_TURN_TIMEOUT,
 ) -> dict[str, Any]:
     provider = provider_factory(model, spec)
     agent = _harness_agent(spec)
@@ -243,9 +271,20 @@ async def _run_cell(
     for turn in turns:
         started = time.perf_counter()
         status = "ok"
-        try:
+
+        async def _drain() -> None:
             async for _event in engine.run(turn.input_text):
                 pass
+
+        try:
+            # A turn is bounded on purpose. The provider SDKs default to a 600s request
+            # timeout with 2 retries, so an unreachable endpoint (a China-hosted gateway
+            # from a US runner, say) used to sit silent for ~30 minutes with no log line.
+            # Cancelling here aborts the SDK call too: it is an await inside this task.
+            await asyncio.wait_for(_drain(), timeout=timeout)
+        except asyncio.TimeoutError:
+            status = "timeout"
+            error = f"turn {turn.turn} exceeded {timeout:g}s"
         except Exception as exc:  # 一个 cell 失败不影响矩阵其它 cell
             status = "error"
             error = f"{type(exc).__name__}: {exc}"
@@ -256,9 +295,8 @@ async def _run_cell(
                 "duration_s": round(time.perf_counter() - started, 3),
             }
         )
-        if status == "error":
+        if status in ("error", "timeout"):
             break
-
     records = store.read(session_id, limit=100000)
     requests = _requests_by_turn(records)
     tool_calls = _tool_calls_by_turn(records)
@@ -269,6 +307,7 @@ async def _run_cell(
         item["model"] = data.get("model", "")
         item["tools"] = data.get("tools", [])
         item["requests"] = data.get("requests", 0)
+        item["first_bytes"] = data.get("first_bytes", 0)
         names = tool_calls.get(int(item["turn"]) or 0, [])
         item["tool_calls"] = len(names)
         item["tool_names"] = names
@@ -293,6 +332,8 @@ async def run_matrix(
     out_path: str | Path | None = None,
     work_dir: str | Path | None = None,
     harness_specs: Optional[dict[str, HarnessSpec]] = None,
+    timeout: float = DEFAULT_TURN_TIMEOUT,
+    seed_dir: str | Path | None = None,
 ) -> dict[str, Any]:
     """跑完整矩阵，返回（并可选写出）报告字典。
 
@@ -304,6 +345,7 @@ async def run_matrix(
     if unknown:
         raise ValueError(f"unknown harness: {', '.join(unknown)}")
     ws = Path(workspace).expanduser().resolve()
+    seed = Path(seed_dir).expanduser().resolve() if seed_dir else None
     factory = provider_factory or _real_provider_factory()
     base = Path(work_dir).expanduser() if work_dir else Path(_temp_dir())
     base.mkdir(parents=True, exist_ok=True)
@@ -312,6 +354,8 @@ async def run_matrix(
     for name in harness_names:
         spec = specs[name]
         for model in models:
+            if seed is not None and seed.is_dir():
+                _apply_seed(ws, seed)
             cells.append(
                 await _run_cell(
                     spec,
@@ -321,6 +365,7 @@ async def run_matrix(
                     provider_factory=factory,
                     auto_approve=auto_approve,
                     work_dir=base,
+                    timeout=timeout,
                 )
             )
 
@@ -350,14 +395,56 @@ def _temp_dir() -> Path:
 
 
 DEFAULT_MAX_BYTES_RATIO = 0.10
+# 用例自带的 workspace 模板目录（相对 case 目录）：里面的文件在每轮开跑前铺进 workspace。
+# 目的在于让第一轮**非调工具不可**：空目录里「列出文件」可以被模型直接回一句「空的」。
+SEED_DIR = "workspace"
+
+
+def _in_git_worktree(path: Path) -> bool:
+    """工作目录是否落在一个 git 仓库里（环境块会因此带上 branch/status/commits）。"""
+    for parent in [path, *path.parents]:
+        if (parent / ".git").exists():
+            return True
+    return False
+
+
+def _resolve_cell_baseline(
+    baseline: dict[str, Any], harness: str, model: str
+) -> dict[str, Any] | None:
+    """从一个基线里取出与该 cell 对应的逐 turn 记录。
+
+    两种基线形态都认：
+
+    * **扁平**（`turns` 列表）——stub 黄金用例，一个基线只对应一个确定性模型；
+    * **按 cell**（`cells` 列表）——真实模型矩阵，一个文件里存多个模型各自的记录。
+
+    真实模型之间的字节量差得很远（同一轮 9131 vs 5660），拿 stub 基线去卡真实模型
+    只会得到必然失败的比较，所以真实模型必须按 (harness, model) 对齐。
+    """
+    cells = baseline.get("cells")
+    if not isinstance(cells, list):
+        return baseline
+    for cell in cells:
+        if not isinstance(cell, dict):
+            continue
+        if str(cell.get("model") or "") != model:
+            continue
+        cell_harness = str(cell.get("harness") or "")
+        if harness and cell_harness and cell_harness != harness:
+            continue
+        return cell
+    return None
 
 
 def compare_baseline(
     cell: dict[str, Any], baseline: dict[str, Any]
 ) -> list[dict[str, Any]]:
     """把一个 cell 的逐 turn 结果与 capture 基线对齐比较（仅参照，不作断言）。"""
+    base_cell = _resolve_cell_baseline(
+        baseline, str(cell.get("harness") or ""), str(cell.get("model") or "")
+    ) or {}
     base_by_turn: dict[int, dict[str, Any]] = {}
-    for item in baseline.get("turns") or []:
+    for item in base_cell.get("turns") or []:
         try:
             base_by_turn[int(item.get("turn") or 0)] = item
         except (TypeError, ValueError):
@@ -369,18 +456,28 @@ def compare_baseline(
         except (TypeError, ValueError):
             continue
         base = base_by_turn.get(turn) or {}
-        base_tools = list(base.get("tools") or [])
+        # 两种基线形态：capture/stub 把「实际调用名」放在 tools；真实模型报告把模型面工具
+        # 列表（16 个）放在 tools、实际调用名放在 tool_names。用错就把工具清单当成调用
+        # 序列，于是每一个 turn 都误报 tool_drift。
+        base_tools = list(
+            base["tool_names"] if "tool_names" in base else (base.get("tools") or [])
+        )
         # 对比的是实际发生的 tool_call 名称序列（tool_names），不是模型面工具列表
         # （tools 由 harness 决定，与录制时不同不算偏差）。
         tools = list(item.get("tool_names") or [])
         base_bytes = int(base.get("bytes") or 0)
         bytes_now = int(item.get("bytes") or 0)
+        base_first = int(base.get("first_bytes") or 0)
+        first_now = int(item.get("first_bytes") or 0)
         diffs.append(
             {
                 "turn": turn,
                 "bytes": bytes_now,
                 "base_bytes": base_bytes,
                 "bytes_delta": bytes_now - base_bytes,
+                "first_bytes": first_now,
+                "base_first_bytes": base_first,
+                "first_delta": first_now - base_first,
                 "tool_calls": int(item.get("tool_calls") or 0),
                 "base_tool_calls": int(base.get("tool_calls") or 0),
                 "tools": tools,
@@ -400,12 +497,20 @@ def check_baseline(
     返回 ``{"ok", "max_bytes_ratio", "checked_turns", "failures"}``。
     """
     baseline = report.get("baseline") or {}
-    base_turns = set()
-    for item in baseline.get("turns") or []:
-        try:
-            base_turns.add(int(item.get("turn") or 0))
-        except (TypeError, ValueError):
-            continue
+    per_cell = isinstance(baseline.get("cells"), list)
+
+    def _base_turns(harness: str, model: str) -> tuple[set[int], bool]:
+        """该 cell 在基线里出现的 turn 集合，以及基线里到底有没有这个 cell。"""
+        base_cell = _resolve_cell_baseline(baseline, harness, model)
+        if base_cell is None:
+            return set(), False
+        turns: set[int] = set()
+        for item in base_cell.get("turns") or []:
+            try:
+                turns.add(int(item.get("turn") or 0))
+            except (TypeError, ValueError):
+                continue
+        return turns, True
 
     failures: list[dict[str, Any]] = []
     checked = 0
@@ -423,6 +528,24 @@ def check_baseline(
                 }
             )
             continue
+        base_turns, has_cell = _base_turns(harness, model)
+        base_cell = _resolve_cell_baseline(baseline, harness, model) or {}
+        # 真实模型报告形态：turn 里带 tool_names。用它的基线不能逐轮比字节（见下）。
+        session_shape = any(
+            "tool_names" in (item or {}) for item in (base_cell.get("turns") or [])
+        )
+        if per_cell and not has_cell:
+            # 基线是按模型存的，却没有这个模型：新模型必须先录一次基线，不能静默跳过。
+            failures.append(
+                {
+                    "harness": harness,
+                    "model": model,
+                    "turn": None,
+                    "kind": "missing_cell",
+                    "detail": "model absent from this baseline",
+                }
+            )
+            continue
         for diff in cell.get("vs_baseline") or []:
             turn = diff.get("turn")
             checked += 1
@@ -436,6 +559,10 @@ def check_baseline(
                         "detail": "turn missing from baseline",
                     }
                 )
+                continue
+            if session_shape:
+                # 真实模型「调不调工具、几轮请求」是模型选择，不是我们的回归：只留在
+                # vs_baseline 里当观测值，不作门禁（deepseek 就时不时整轮不调工具）。
                 continue
             if not diff.get("tools_match"):
                 failures.append(
@@ -471,6 +598,47 @@ def check_baseline(
                         },
                     }
                 )
+        if session_shape:
+            # 真实模型矩阵只门禁「我们控制的东西」：第一轮第一次请求的字节量，它等于
+            # 系统提示 + 环境块 + 工具定义 + 用户输入，与模型接下来调不调工具无关。
+            # 会话总量、工具调用序列都是模型选择，留在 vs_baseline 里做观测值。
+            first = next(
+                (d for d in cell.get("vs_baseline") or [] if d.get("turn") == 1), None
+            )
+            if first is not None:
+                got = int(first.get("first_bytes") or 0)
+                want = int(first.get("base_first_bytes") or 0)
+                if want <= 0:
+                    failures.append(
+                        {
+                            "harness": harness,
+                            "model": model,
+                            "turn": 1,
+                            "kind": "missing_prompt_bytes",
+                            "detail": (
+                                "baseline carries no first_bytes for turn 1 "
+                                "(recorded before prompt-byte tracking); re-record it"
+                            ),
+                        }
+                    )
+                else:
+                    ratio = abs(got - want) / want
+                    if ratio > max_bytes_ratio:
+                        failures.append(
+                            {
+                                "harness": harness,
+                                "model": model,
+                                "turn": 1,
+                                "kind": "prompt_drift",
+                                "detail": {
+                                    "scope": "prompt",
+                                    "bytes": got,
+                                    "base_bytes": want,
+                                    "delta": got - want,
+                                    "ratio": round(ratio, 4),
+                                },
+                            }
+                        )
     return {
         "ok": not failures,
         "max_bytes_ratio": max_bytes_ratio,
@@ -508,11 +676,29 @@ def main(argv: Optional[list[str]] = None) -> int:
         help="自动批准工具调用（无人值守跑工具时才开；默认引擎拒绝）",
     )
     parser.add_argument("--max-turns", type=int, default=0, help="最多跑前 N 轮（0 = 全部）")
+    parser.add_argument(
+        "--timeout",
+        type=float,
+        default=DEFAULT_TURN_TIMEOUT,
+        help=(
+            "单轮墙钟上限（秒，默认 "
+            f"{DEFAULT_TURN_TIMEOUT:g}）。端点不可达时让该轮快速记为 timeout，"
+            "而不是等 SDK 默认的 600s×3 重试"
+        ),
+    )
     parser.add_argument("--out", help="报告 JSON 输出路径")
     parser.add_argument(
         "--check-baseline",
         action="store_true",
         help="把 --case 的基线对比作为门禁：漂移即退出码 3（默认仅参照）",
+    )
+    parser.add_argument(
+        "--baseline-file",
+        default=None,
+        help=(
+            "指定基线文件（默认取 case 目录下的 baseline.json）。真实模型矩阵请指向 "
+            "real-baseline.json：它是按 (harness, model) 存的，能各自比各自"
+        ),
     )
     parser.add_argument(
         "--max-bytes-ratio",
@@ -550,6 +736,19 @@ def main(argv: Optional[list[str]] = None) -> int:
     if args.max_bytes_ratio < 0:
         print("--max-bytes-ratio must be >= 0", file=sys.stderr)
         return 2
+    if args.write_baseline or args.check_baseline:
+        # 环境块里有 git 快照（branch / status / recent commits）。workspace 落在仓库里时，
+        # 基线会把这几行一起拍进去，于是和 CI 的 `${{ runner.temp }}` 空目录差出几百字节 ——
+        # 2026-11-13 就是这样把 push 触发的 golden gate 弄红的。
+        ws_path = Path(args.workspace).expanduser().resolve()
+        if _in_git_worktree(ws_path):
+            print(
+                f"warning: workspace {ws_path} is inside a git work tree — the environment "
+                "block embeds the git snapshot (branch/status/recent commits), so the bytes "
+                "will not match a run on an empty directory; use an empty non-git dir for "
+                "baseline work (CI uses ${{ runner.temp }}/eval-ws)",
+                file=sys.stderr,
+            )
     if args.write_baseline:
         if not args.case or not args.stub:
             print("--write-baseline requires --case and --stub", file=sys.stderr)
@@ -568,10 +767,27 @@ def main(argv: Optional[list[str]] = None) -> int:
             return 2
 
     baseline: Optional[dict[str, Any]] = None
+    seed_dir: Optional[Path] = None
     if args.case:
         from .capture import load_case  # 延迟导入：capture 顶层依赖本模块
 
         turns, baseline = load_case(args.case)
+        # 用例目录里的 workspace/ 模板：铺进运行目录，让第一轮有东西可列（见 SEED_DIR）。
+        candidate = Path(args.case).expanduser() / SEED_DIR
+        if candidate.is_dir():
+            seed_dir = candidate
+        if args.baseline_file:
+            base_path = Path(args.baseline_file).expanduser()
+            try:
+                baseline = json.loads(base_path.read_text(encoding="utf-8"))
+            except OSError as exc:
+                print(f"cannot read --baseline-file {base_path}: {exc}", file=sys.stderr)
+                return 2
+            except json.JSONDecodeError as exc:
+                print(
+                    f"--baseline-file {base_path} is not valid JSON: {exc}", file=sys.stderr
+                )
+                return 2
         if not turns:
             print(
                 f"no turns found in case {args.case!r} (missing messages.jsonl?)",
@@ -580,7 +796,8 @@ def main(argv: Optional[list[str]] = None) -> int:
             return 2
         if args.check_baseline and baseline is None:
             print(
-                f"no baseline.json found in case {args.case!r}; cannot check baseline",
+                f"no baseline.json found in case {args.case!r} (and no --baseline-file); "
+                "cannot check baseline",
                 file=sys.stderr,
             )
             return 2
@@ -611,6 +828,8 @@ def main(argv: Optional[list[str]] = None) -> int:
             provider_factory=factory,
             auto_approve=args.auto_approve,
             out_path=args.out,
+            timeout=args.timeout,
+            seed_dir=seed_dir,
         )
     )
     if args.write_baseline:

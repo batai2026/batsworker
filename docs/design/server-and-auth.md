@@ -41,6 +41,34 @@ frame is just one way to answer. An item can equally be resolved over REST
 `[ow:<id>]` token), first responder wins. This is why dropped sockets,
 restarts, and unattended runs lose nothing: see [automation.md](automation.md).
 
+#### Dispatch is a table
+
+Inbound frames go through `FRAME_HANDLERS` in `coworker/server/routes/ws.py`
+(`type` → async handler taking `_SessionSocket`, the per-connection context of
+manager / engine / turn runner / session id / workspace / reject / send).
+Envelope checks — JSON decode, per-connection rate limit, "must be an object",
+"type must be a string" — stay in the receive loop because they judge the frame,
+not the frame type. `team_response` and `items_response` deliberately share one
+handler: same verdict shape, same Inbox plan item.
+
+Adding a frame type is two edits: one row in `FRAME_HANDLERS`, one case in the
+matrix below. Nothing else in the loop moves.
+
+#### Testing frame types: use a probe frame
+
+`tests/test_ws_frames.py` pins every dispatch decision. Writing it turned up the
+trap worth remembering: **most accepted frames answer nothing.** The socket only
+speaks when a turn runs or a prompt resolves, so a `receive_json()` after an
+accepted frame blocks forever — the test hangs instead of failing.
+
+The fix is a probe: after the candidate frame, send `{"type": "__probe__"}`,
+which is never a known type and therefore always answered with
+`input_rejected`. Whatever arrives *before* that rejection belongs to the
+candidate, so "accepted silently" and "never handled" become distinguishable
+without sleeps or timeouts. Keep that shape for any new case; the matrix is
+deliberately shallow (dispatch decision only — deeper effects live in
+`tests/test_server.py`).
+
 ## Auth: the launch token
 
 The sidecar authenticates every request (HTTP header and WebSocket

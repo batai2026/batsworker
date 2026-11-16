@@ -1,5 +1,6 @@
-# App CI — the coworker Python suite, the GUI unit tests, and the hermetic
-# Playwright e2e suite (mocked /v1 + WS; no model or network needed).
+# App CI — the coworker Python suite, the desktop shell and STT sidecar (Rust),
+# the GUI unit tests, and the hermetic Playwright e2e suite (mocked /v1 + WS; no
+# model or network needed).
 
 name: CI
 
@@ -34,9 +35,10 @@ jobs:
       - name: Install
         run: |
           python -m pip install --upgrade pip
-          pip install -e ".[messaging,dev,bedrock]"
+          pip install -r requirements-dev.lock
+          pip install -e . --no-deps
       - name: Test
-        run: pytest tests -q
+        run: pytest tests -q --cov --cov-report=term
 
   # Windows: catch platform-only failures (time.tzset, UTF-8 decoding, PowerShell
   # shell semantics) that the Linux CI can never see. The two known Windows failures
@@ -52,10 +54,11 @@ jobs:
         shell: pwsh
         run: |
           python -m pip install --upgrade pip
-          pip install -e ".[messaging,dev,bedrock]"
+          pip install -r requirements-dev.lock
+          pip install -e . --no-deps
       - name: Test
         shell: pwsh
-        run: pytest tests -q
+        run: pytest tests -q --cov --cov-report=term
 
   # The image layout is a security boundary: a state dir inside /workspace hands the model
   # `secrets.json` and the sidecar token via unapproved `read_file`, and uid 0 turns a
@@ -135,7 +138,80 @@ jobs:
         run: npm ci
       - name: Install Playwright browsers
         working-directory: surfaces/gui
-        run: npx playwright install --with-deps chromium
+        # No `--with-deps`: that flag shells out to apt-get, and a DNS hiccup on the
+        # runner ("Temporary failure resolving azure.archive.ubuntu.com") burned 10
+        # minutes and turned the job red while every other job passed. The image
+        # already carries Chromium's shared libraries; if it ever stops doing so,
+        # Playwright names the missing package and it goes back in as an explicit
+        # `apt-get install` line rather than a blanket dependency sweep.
+        run: npx playwright install chromium
       - name: e2e
         working-directory: surfaces/gui
         run: npm run e2e
+
+  # Rust: neither the desktop shell nor `stt/` had any CI coverage, so two classes
+  # of breakage could only be found by a human running cargo locally -- a
+  # feature/config mismatch (e.g. `protocol-asset` without `assetProtocol`, which
+  # tauri-build rejects) and a type error inside a `#[cfg(windows)]` block, which
+  # no other job compiles.
+  #
+  # The SPA is bundled as a resource, and tauri-build hard-fails when `../dist` is
+  # missing, so the frontend is built first. That also lets the last step assert
+  # the copied layout: a `dist/**/*` resource glob flattens `assets/` into the
+  # dist root, which leaves index.html pointing at files that are not there.
+  rust:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: surfaces/gui/package-lock.json
+      - name: Build the SPA that gets bundled
+        working-directory: surfaces/gui
+        shell: pwsh
+        run: |
+          npm ci
+          npm run build
+      # Pinned like release.yml: third-party actions by commit, GitHub-owned by tag.
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+        with:
+          workspaces: |
+            surfaces/gui/src-tauri
+            stt
+      - name: Locate libclang (whisper-rs bindgen)
+        # windows-latest usually ships LLVM already; install only when it is absent
+        # so the job does not depend on an image detail that can change.
+        shell: pwsh
+        run: |
+          $llvm = "C:\Program Files\LLVM\bin"
+          if (-not (Test-Path (Join-Path $llvm "libclang.dll"))) {
+            choco install llvm -y --no-progress
+          }
+          "LIBCLANG_PATH=$llvm" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+      - name: Clippy
+        working-directory: surfaces/gui/src-tauri
+        shell: pwsh
+        run: cargo clippy --all-targets -- -D warnings
+      - name: Assert the bundled SPA keeps its layout
+        shell: pwsh
+        run: |
+          # `cargo clippy` compiles but never stages `bundle.resources`, so
+          # `target/debug/dist` is a side effect of `tauri build` / `tauri dev` only.
+          # Asserting on it here tested a build this job does not run (it went red on
+          # every run since the guard was added). Assert on the source the bundle copies
+          # from, plus the mapping that puts it next to the executable.
+          if (-not (Test-Path surfaces/gui/dist/index.html)) {
+            throw "missing surfaces/gui/dist/index.html — the SPA build produced no entry point"
+          }
+          if (-not (Test-Path surfaces/gui/dist/assets)) {
+            throw "missing surfaces/gui/dist/assets — the SPA build produced no asset dir"
+          }
+          node -e "const c=require('./surfaces/gui/src-tauri/tauri.conf.json'); const r=(c.bundle&&c.bundle.resources)||{}; if(r['../dist']!=='dist'){console.error('bundle.resources must map ../dist -> dist, got '+JSON.stringify(r)); process.exit(1)}"
+      - name: Test the STT sidecar
+        shell: pwsh
+        run: cargo test --manifest-path stt/Cargo.toml

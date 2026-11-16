@@ -68,7 +68,11 @@ def test_secrets_file_is_restricted(tmp_path):
     SecretStore(path).put("x", {"a": 1})
     if sys.platform == "win32":
         out = subprocess.run(
-            ["icacls", str(path)], capture_output=True, text=True
+            ["icacls", str(path)],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
         ).stdout
         user = os.environ.get("USERNAME", "")
         assert user and user in out  # current user is granted

@@ -400,6 +400,11 @@ def _capture_requests(monkeypatch):
         return {"ok": True, "data": {"items": []}}
 
     monkeypatch.setattr(integration_tools, "_request", fake_request)
+    # Batch A moved these tools to tools_mail_calendar, which resolves
+    # _request off toolkit; patch both until every platform module moved.
+    import coworker.connectors.toolkit as toolkit
+
+    monkeypatch.setattr(toolkit, "_request", fake_request)
     return seen
 
 
@@ -458,7 +463,11 @@ def test_managed_401_reminted_once(tmp_path, monkeypatch):
         lambda s, c, iid, *, force=False: minted.append(force) or "ghs_x",
     )
     responses = iter([{"error": "HTTP 401"}, {"ok": True, "data": {}}])
-    monkeypatch.setattr(integration_tools, "_request", lambda *a, **k: next(responses))
+    import coworker.connectors.toolkit as toolkit
+
+    fake_request = lambda *a, **k: next(responses)  # noqa: E731 - one-liner fake
+    monkeypatch.setattr(integration_tools, "_request", fake_request)
+    monkeypatch.setattr(toolkit, "_request", fake_request)
 
     out = _tool(secrets, "github_review")("acme", "site", 5, "APPROVE")
     assert out["ok"] is True
@@ -500,6 +509,11 @@ def test_list_commits_filters_and_trims(tmp_path, monkeypatch):
         }
 
     monkeypatch.setattr(integration_tools, "_request", fake_request)
+    # Batch A moved these tools to tools_mail_calendar, which resolves
+    # _request off toolkit; patch both until every platform module moved.
+    import coworker.connectors.toolkit as toolkit
+
+    monkeypatch.setattr(toolkit, "_request", fake_request)
     out = _tool(secrets, "github_list_commits")(
         "acme",
         "site",
@@ -525,6 +539,8 @@ def _git(args, cwd):
         check=True,
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
     )
 
 

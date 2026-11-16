@@ -218,3 +218,39 @@ def test_background_unknown_task_errors(executor):
     assert (
         "unknown task" in reg.execute("shell_task_kill", {"task_id": "bg-99"})["error"]
     )
+
+
+# -- non-UTF-8 child output (GBK/ANSI codepage) ------------------------------------
+
+
+def test_gbk_output_does_not_crash_reader(tmp_path):
+    """Regression: on zh-CN Windows a child emitting GBK bytes (native tools, compiler
+    output, `dir` of a tree with non-ASCII names) must not kill the reader thread.
+    The executor pins `encoding="utf-8", errors="replace"` so a byte that is not valid
+    UTF-8 decodes to U+FFFD instead of raising UnicodeDecodeError mid-command.
+
+    PowerShell's own REPL is Unicode, so we force the child to emit GBK bytes the same
+    way a native tool would: switch the console output encoding to codepage 936 and
+    print CJK text. Before the fix the `text=True` Popen used the ANSI codepage (GBK on
+    this box) but the reader thread would still crash on mixed input; with the fix the
+    command completes and the output contains the replacement character.
+    """
+    if not _WIN:
+        pytest.skip("GBK console output is a Windows-only failure mode")
+
+    cmd = (
+        "[Console]::OutputEncoding = [System.Text.Encoding]::GetEncoding(936); "
+        "Write-Output '中文GBK输出'"
+    )
+    ex = LocalExecutor(cwd=tmp_path, default_timeout=10)
+    try:
+        result = ex.run(cmd)
+    finally:
+        ex.close()
+
+    # The command ran to completion: we got an exit code and the marker resynced.
+    assert result["exit_code"] == 0
+    # Output survives (possibly with U+FFFD in place of undecodable bytes).
+    assert "GBK" in result["output"] or "\ufffd" in result["output"]
+    # The session is still alive and usable after the non-UTF-8 output.
+    assert ex.run("echo alive")["output"].strip().endswith("alive")

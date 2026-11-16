@@ -36,7 +36,7 @@ def decode(value: str) -> Optional[tuple[str, str]]:
         d = json.loads(value)
         if isinstance(d, dict) and d.get("id"):
             return str(d["id"]), str(d.get("r", ""))
-    except Exception:
+    except (json.JSONDecodeError, TypeError):
         pass
     return None
 

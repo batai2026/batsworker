@@ -1,0 +1,136 @@
+browser_open_url	approval	browser	url	url:string,wait_until:string	Open a URL in the local Playwright browser session.
+browser_read_page	read	browser		max_chars:integer	Read the current page: its text plus visible controls and selector hints (for browser_click/browser_type). Not an image — use browser_screenshot for pixels.
+browser_click	approval	browser	target	target:string	Click a visible page element by CSS selector, text=label, role=button:Name, or text fallback. Requires approval.
+browser_type	approval	browser	target,text	clear:boolean,target:string,text:string	Fill or type into an input, textarea, or editable element. Requires approval.
+browser_select	approval	browser	target,value	target:string,value:string	Select an option in a dropdown by selector and option value/label. Requires approval.
+browser_upload_file	approval	browser	target,path	path:string,target:string	Upload a local file through a file input. Requires approval.
+browser_wait	read	browser		milliseconds:integer,target:string	Wait for a duration or for a target element to appear.
+browser_screenshot	approval	browser		path:string	Save a full-page screenshot of the current browser page and return the local path.
+browser_close	approval	browser			Close the local Playwright browser session.
+browser_record_start	read	browser	name	name:string	Start recording browser tool calls as a replay script.
+browser_record_stop	read	browser			Stop recording and return the captured actions.
+browser_record_save	approval	browser	name	name:string,title:string	Save the current recording as a reusable replay script.
+browser_replay	approval	browser	name	name:string	Re-execute a saved recording step by step.
+browser_record_list	read	browser			List saved browser recordings.
+email_list_folders	read	email,read			List the connected mailbox's folders and message counts.
+email_search	read	email,read		before:string,folder:string,from_address:string,max_results:integer,since:string,subject:string,text:string,to_address:string,unread_only:boolean	Search the connected mailbox. Returns newest-first envelopes (uid, date, from, to, subject, unread, has_attachments). Never marks messages read.
+email_read	read	email,read	uid	folder:string,uid:string	Read one email by uid: headers, text body, and attachment names/sizes (use email_download_attachment to save one). Never marks messages read.
+email_download_attachment	approval	email,read	uid,filename	filename:string,folder:string,uid:string	Save one attachment from an email into the session's primary directory and return the saved path. Requires user approval.
+email_send	approval	email,write	to,subject,body	attachments:array,bcc:string,body:string,cc:string,reply_to_folder:string,reply_to_uid:string,subject:string,to:string	Send an email from the connected account. Requires user approval. To reply to a message pass reply_to_uid (threading headers and Re: subject are set automatically; leave subject empty to reuse the original).
+github_search	read	github,read	query	max_results:integer,query:string,search_type:string	Search GitHub issues, pull requests, or repositories.
+github_get_issue	read	github,read	owner,repo,issue_number	issue_number:integer,owner:string,repo:string	Read a GitHub issue or pull request by number.
+github_create_issue	approval	github,write	owner,repo,title	body:string,owner:string,repo:string,title:string	Create a GitHub issue. Requires user approval.
+github_reply	approval	github,write	owner,repo,number,body	body:string,number:integer,owner:string,repo:string	Comment on a GitHub issue or pull request (as the agent's bot identity on the managed path). Requires user approval.
+github_review	approval	github,write	owner,repo,pull_number	body:string,event:string,owner:string,pull_number:integer,repo:string	Submit a pull-request review (approve / request changes / comment). Requires user approval.
+github_list_commits	read	github,read	owner,repo	author:string,max_results:integer,owner:string,repo:string,since:string,until:string	List a repository's commits (newest first), optionally filtered by ISO-8601 since/until dates or author — the raw material for activity summaries.
+github_clone	approval	github,read	owner,repo	directory:string,owner:string,repo:string	Clone a GitHub repository into a session folder so the agent can explore the code locally. Private repos use a short-lived token that is never written to disk. Requires user approval.
+github_pull	approval	github,read	directory	directory:string	Fast-forward an existing clone in a session folder to the latest upstream commits. Requires user approval.
+gmail_search_messages	read	gmail,read	query	account:string,max_results:integer,query:string	Search Gmail messages using Gmail query syntax.
+gmail_get_message	read	gmail,read	message_id	account:string,message_id:string	Read a Gmail message by ID.
+gmail_send_email	approval	gmail,write	to,subject,body	account:string,body:string,cc:string,subject:string,to:string	Send an email through Gmail. Requires user approval; the `account` argument names the sending mailbox on the approval card.
+gcal_list_events	read	calendar,read		account:string,calendar_id:string,max_results:integer,time_max:string,time_min:string	List Google Calendar events. time_min/time_max should be RFC3339 timestamps when provided.
+gcal_free_busy	read	calendar,read	time_min,time_max	account:string,calendars:string,time_max:string,time_min:string,timezone:string	Look up busy intervals (availability) for one or more calendars. time_min/time_max are RFC3339 timestamps; calendars is a comma-separated list of calendar ids.
+gcal_create_event	approval	calendar,write	summary,start,end	account:string,calendar_id:string,description:string,end:string,start:string,summary:string,timezone:string	Create a Google Calendar event. Requires user approval.
+gcal_update_event	approval	calendar,write	event_id	account:string,calendar_id:string,description:string,end:string,event_id:string,start:string,summary:string,timezone:string	Update fields of a Google Calendar event (only the provided fields change). Requires user approval.
+gcal_delete_event	approval	calendar,write	event_id	account:string,calendar_id:string,event_id:string	Delete a Google Calendar event. Requires user approval.
+outlook_search_messages	read	outlook,read		account:string,max_results:integer,query:string	Search or list Outlook messages through Microsoft Graph.
+outlook_send_mail	approval	outlook,write	to,subject,body	account:string,body:string,subject:string,to:string	Send mail through Outlook/Microsoft Graph. Requires user approval.
+outlook_list_events	read	outlook,read		account:string,end:string,max_results:integer,start:string	List upcoming Outlook calendar events (recurrences expanded, ordered by start). start/end are ISO timestamps; default window is the next 7 days.
+outlook_create_event	approval	outlook,write	subject,start,end	account:string,attendees:string,body:string,end:string,location:string,start:string,subject:string,teams_meeting:boolean,timezone:string	Create an Outlook calendar event; invites go to attendees (comma-separated emails). teams_meeting adds a Teams link. Requires user approval.
+outlook_update_event	approval	outlook,write	event_id	account:string,body:string,end:string,event_id:string,location:string,start:string,subject:string,timezone:string	Change fields of an existing Outlook calendar event (only the provided fields change). Requires user approval.
+outlook_delete_event	approval	outlook,write	event_id	account:string,event_id:string	Delete (cancel) an Outlook calendar event. Requires user approval.
+outlook_respond_event	approval	outlook,write	event_id,response	account:string,comment:string,event_id:string,response:string	Respond to an Outlook meeting invite: accept, decline, or tentative. The organizer is notified. Requires user approval.
+jira_search_issues	read	jira,read	jql	jql:string,max_results:integer	Search Jira issues using JQL.
+jira_get_issue	read	jira,read	issue_key	issue_key:string	Read a Jira issue.
+jira_create_issue	approval	jira,write	project_key,issue_type,summary	description:string,issue_type:string,project_key:string,summary:string	Create a Jira issue. Requires user approval.
+confluence_search	read	confluence,read	query	max_results:integer,query:string	Search Confluence pages.
+confluence_get_page	read	confluence,read	page_id	page_id:string	Read a Confluence page.
+confluence_create_page	approval	confluence,write	space_key,title,body	body:string,parent_id:string,space_key:string,title:string	Create a Confluence page. Body should be Confluence storage-format HTML. Requires user approval.
+zendesk_search	read	zendesk,read	query	query:string	Search Zendesk tickets/users/articles.
+zendesk_get_ticket	read	zendesk,read	ticket_id	ticket_id:integer	Read a Zendesk ticket.
+zendesk_create_ticket	approval	zendesk,write	subject,body	body:string,requester_email:string,subject:string	Create a Zendesk ticket. Requires user approval.
+linear_search_issues	read	linear,read	query	max_results:integer,query:string	Search Linear issues by text.
+linear_get_issue	read	linear,read	issue_id	issue_id:string	Read a Linear issue (with comments) by ID or key like ENG-123.
+linear_list_teams	read	linear,read			List Linear teams (IDs are needed to create issues).
+linear_create_issue	approval	linear,write	team_id,title	description:string,team_id:string,title:string	Create a Linear issue. Get team_id from linear_list_teams. Requires user approval.
+gitlab_search	read	gitlab,read	query	max_results:integer,query:string,scope:string	Search GitLab projects, issues, or merge_requests (scope).
+gitlab_get_issue	read	gitlab,read	project,issue_iid	issue_iid:integer,project:string	Read a GitLab issue. project is an ID or full path like group/repo.
+gitlab_get_merge_request	read	gitlab,read	project,mr_iid	mr_iid:integer,project:string	Read a GitLab merge request. project is an ID or full path like group/repo.
+gitlab_create_issue	approval	gitlab,write	project,title	description:string,project:string,title:string	Create a GitLab issue. Requires user approval.
+discord_list_channels	read	discord,read	guild_id	guild_id:string	List channels in a Discord server (guild).
+discord_read_messages	read	discord,read	channel_id	channel_id:string,max_results:integer	Read recent messages from a Discord channel.
+discord_send_message	approval	discord,write	channel_id,content	channel_id:string,content:string	Send a message to a Discord channel. Requires user approval.
+stripe_search_customers	read	stripe,read	query	max_results:integer,query:string	Search Stripe customers. Query uses Stripe search syntax, e.g. email:'jane@example.com' or name~'Jane'.
+stripe_list_charges	read	stripe,read		customer_id:string,max_results:integer	List Stripe charges, optionally for one customer.
+stripe_list_invoices	read	stripe,read		customer_id:string,max_results:integer	List Stripe invoices, optionally for one customer.
+asana_list_workspaces	read	asana,read			List Asana workspaces (GIDs are needed to search tasks).
+asana_search_tasks	read	asana,read	workspace_gid,query	max_results:integer,query:string,workspace_gid:string	Search Asana tasks by name in a workspace. Get workspace_gid from asana_list_workspaces.
+asana_get_task	read	asana,read	task_gid	task_gid:string	Read an Asana task.
+asana_create_task	approval	asana,write	project_gid,name	name:string,notes:string,project_gid:string	Create an Asana task in a project. Requires user approval.
+hubspot_search	read	hubspot,read		filters:string,max_results:integer,object_type:string,portal:string,properties:string,query:string	Search HubSpot CRM contacts, companies, deals, or tickets (object_type). Custom properties are only returned if named in `properties`, and only matchable via `filters` (free-text query searches default fields only).
+hubspot_get_object	read	hubspot,read	object_type,object_id	associations:string,object_id:string,object_type:string,portal:string,properties:string	Read a HubSpot CRM record by ID. Custom properties are only returned if named in `properties`; pass `associations` to also get linked record ids.
+hubspot_create_contact	approval	hubspot,write	email	email:string,first_name:string,last_name:string,portal:string	Create a HubSpot contact. Requires user approval; the `portal` argument names the portal on the approval card.
+hubspot_update_object	approval	hubspot,write	object_type,object_id,properties	object_id:string,object_type:string,portal:string,properties:object	Update properties on a HubSpot CRM record (no deletes exist). Requires user approval.
+hubspot_log_note	approval	hubspot,write	object_type,object_id,note	note:string,object_id:string,object_type:string,portal:string	Log a note on a HubSpot record's timeline. Requires user approval.
+hubspot_create_task	approval	hubspot,write	title	due:string,notes:string,portal:string,title:string	Create a HubSpot task (due = epoch ms or ISO date). Requires user approval.
+dropbox_search	read	dropbox,read	query	max_results:integer,query:string	Search Dropbox files and folders by name/content.
+dropbox_list_folder	read	dropbox,read		path:string	List a Dropbox folder. Empty path is the root.
+dropbox_read_file	read	dropbox,read	path	max_chars:integer,path:string	Read a text file from Dropbox by path.
+box_search	read	box,read	query	max_results:integer,query:string	Search Box files and folders.
+box_list_folder	read	box,read		folder_id:string	List items in a Box folder. Folder '0' is the root.
+box_read_file	read	box,read	file_id	file_id:string,max_chars:integer	Read a text file from Box by file ID.
+quickbooks_query	read	quickbooks,read	query	max_results:integer,query:string	Run a QuickBooks Online query, e.g. "SELECT * FROM Invoice WHERE TotalAmt > '100'". Entities include Customer, Invoice, Bill, Payment, Account, Vendor.
+quickbooks_list_customers	read	quickbooks,read		max_results:integer	List QuickBooks customers.
+quickbooks_list_invoices	read	quickbooks,read		max_results:integer	List recent QuickBooks invoices.
+quickbooks_get_report	read	quickbooks,read	report	end_date:string,report:string,start_date:string	Run a QuickBooks report such as ProfitAndLoss, BalanceSheet, CashFlow, AgedReceivables. Dates are YYYY-MM-DD.
+whatsapp_send_message	approval	whatsapp,write	to,text	text:string,to:string	Send a WhatsApp text message. Only delivered if the recipient messaged this number within the last 24 hours; otherwise use whatsapp_send_template. Requires user approval.
+whatsapp_send_template	approval	whatsapp,write	to,template_name	language_code:string,template_name:string,to:string	Send a pre-approved WhatsApp template message (works outside the 24-hour service window). Requires user approval.
+notion_search	read	notion,read	query	account:string,max_results:integer,query:string	Search Notion pages and databases the integration can see.
+notion_read_page	read	notion,read	page_id	account:string,page_id:string	Read a Notion page: properties plus its content flattened to text.
+notion_query_database	read	notion,read	database_id	account:string,database_id:string,filter_json:string,max_results:integer	Query a Notion database, optionally with a Notion filter object.
+notion_create_page	approval	notion,write	parent_page_id,title	account:string,content:string,parent_page_id:string,title:string	Create a Notion page under a parent page (plain-text paragraphs).
+attio_list_objects	read	attio,read		account:string	List Attio object types (companies, people, deals, custom).
+attio_query_records	read	attio,read	object_type	account:string,filter_json:string,max_results:integer,object_type:string	List/filter records of an Attio object (e.g. companies, people); filter_json is an Attio filter object.
+attio_get_record	read	attio,read	object_type,record_id	account:string,object_type:string,record_id:string	Read one Attio record by object type and record id.
+attio_create_note	approval	attio,write	parent_object,parent_record_id,title,content	account:string,content:string,parent_object:string,parent_record_id:string,title:string	Log a note on an Attio record (e.g. a company or person).
+posthog_query	read	posthog,read	hogql	account:string,hogql:string	Run a HogQL (SQL-like) query against PostHog analytics, e.g. SELECT event, count() FROM events WHERE timestamp > now() - INTERVAL 7 DAY GROUP BY event.
+posthog_list_insights	read	posthog,read		account:string,max_results:integer,query:string	List saved PostHog insights (dashboards' building blocks).
+mixpanel_segmentation	read	mixpanel,read	event,from_date,to_date	account:string,event:string,from_date:string,to_date:string,unit:string,where:string	Mixpanel event counts over a date range (YYYY-MM-DD), optionally filtered by a `where` expression like properties["plan"]=="pro".
+mixpanel_top_events	read	mixpanel,read		account:string,max_results:integer	Today's top Mixpanel events by volume.
+amplitude_active_users	read	amplitude,read	start,end	account:string,end:string,metric:string,start:string	Amplitude daily active or new users between two dates (YYYYMMDD or YYYY-MM-DD).
+amplitude_event_totals	read	amplitude,read	event_type,start,end	account:string,end:string,event_type:string,start:string	Daily totals for one Amplitude event between two dates.
+apollo_enrich_person	approval	apollo,read		account:string,company_domain:string,email:string,name:string	Enrich a person from Apollo: title, company, LinkedIn, location — by email and/or name (+ optional company domain).
+apollo_enrich_company	approval	apollo,read	domain	account:string,domain:string	Enrich a company from Apollo by domain: size, industry, funding, tech stack.
+apollo_search_people	approval	apollo,read	query	account:string,max_results:integer,query:string	Keyword-search people in Apollo's B2B database (e.g. 'VP engineering fintech Berlin').
+hunter_domain_search	approval	hunter,read	domain	account:string,domain:string,max_results:integer	Find published email addresses for a company domain (Hunter).
+hunter_find_email	approval	hunter,read	domain,first_name,last_name	account:string,domain:string,first_name:string,last_name:string	Find a person's most likely email address from their name and company domain (Hunter).
+hunter_verify_email	approval	hunter,read	email	account:string,email:string	Check whether an email address is deliverable (Hunter).
+clickup_list_teams	read	clickup,read			List ClickUp workspaces (team ids are needed to browse spaces).
+clickup_list_spaces	read	clickup,read	team_id	team_id:string	List spaces in a ClickUp workspace.
+clickup_list_lists	read	clickup,read	space_id	space_id:string	List folderless lists in a ClickUp space (list ids hold the tasks).
+clickup_list_tasks	read	clickup,read	list_id	include_closed:boolean,list_id:string,max_results:integer	List tasks in a ClickUp list.
+clickup_get_task	read	clickup,read	task_id	task_id:string	Read a ClickUp task (with subtasks) by id.
+clickup_create_task	approval	clickup,write	list_id,name	description:string,list_id:string,name:string	Create a ClickUp task in a list. Requires user approval.
+clickup_update_task	approval	clickup,write	task_id	description:string,name:string,status:string,task_id:string	Update a ClickUp task's name, description, or status. Requires user approval.
+clickup_add_comment	approval	clickup,write	task_id,text	task_id:string,text:string	Comment on a ClickUp task. Requires user approval.
+close_search_leads	read	close,read	query	max_results:integer,query:string	Search Close leads (supports Close's search syntax, e.g. "status:potential acme").
+close_get_lead	read	close,read	lead_id	lead_id:string	Read a Close lead (contacts, opportunities, addresses) by id.
+close_list_opportunities	read	close,read		lead_id:string,max_results:integer	List Close opportunities, optionally for one lead.
+close_create_lead	approval	close,write	name	contact_email:string,contact_name:string,name:string	Create a Close lead (company), optionally with one contact. Requires user approval.
+close_update_opportunity	approval	close,write	opportunity_id	note:string,opportunity_id:string,status_id:string	Update a Close opportunity's status or note. Requires user approval.
+close_log_note	approval	close,write	lead_id,note	lead_id:string,note:string	Log a note on a Close lead's timeline. Requires user approval.
+figma_get_file	read	figma,read	file_key	file_key:string	Read a Figma file's pages and top-level frames (file key is in the URL).
+figma_get_comments	read	figma,read	file_key	file_key:string	List comments on a Figma file.
+figma_post_comment	approval	figma,write	file_key,message	file_key:string,message:string,reply_to:string	Comment on a Figma file (optionally replying to a comment). Requires user approval.
+figma_export_images	read	figma,read	file_key,node_ids	file_key:string,format:string,node_ids:string,scale:integer	Render Figma nodes to image URLs (node ids comma-separated; png/svg/pdf).
+drive_search_files	read	google_drive,read	query	account:string,max_results:integer,query:string	Search Google Drive files by name or content.
+drive_list_folder	read	google_drive,read		account:string,folder_id:string,max_results:integer	List a Google Drive folder's contents ('root' for My Drive).
+drive_read_file	read	google_drive,read	file_id	account:string,file_id:string,max_chars:integer	Read a Drive file as text (Docs/Sheets/Slides export; other text files download).
+docusign_list_envelopes	read	docusign,read		since_days:integer,status:string	List recent Docusign envelopes, optionally by status (sent/delivered/completed/declined/voided).
+docusign_get_envelope	read	docusign,read	envelope_id	envelope_id:string	Read a Docusign envelope's status and per-signer progress.
+docusign_list_templates	read	docusign,read		max_results:integer	List Docusign templates (template ids are needed to send).
+docusign_send_from_template	approval	docusign,write	template_id,recipient_email,recipient_name	recipient_email:string,recipient_name:string,role_name:string,subject:string,template_id:string	Send a Docusign template to one signer for signature. Requires user approval.
+canva_list_designs	read	canva,read		max_results:integer,query:string	List (or text-search) Canva designs.
+canva_get_design	read	canva,read	design_id	design_id:string	Read a Canva design's metadata (title, pages, urls).
+canva_export_design	read	canva,read	design_id	design_id:string,format:string	Start rendering a Canva design to pdf/png/jpg; returns an export job to poll.
+canva_get_export	read	canva,read	export_id	export_id:string	Check a Canva export job; returns download URLs when finished.

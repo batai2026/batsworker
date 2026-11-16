@@ -90,7 +90,7 @@ def _parse_inbox_json(s: str) -> dict[str, Any]:
     try:
         v = _json.loads(s) if s else {}
         return v if isinstance(v, dict) else {}
-    except Exception:
+    except (_json.JSONDecodeError, TypeError):
         return {}
 
 
@@ -178,6 +178,8 @@ def _git_branch(path: Path) -> Optional[str]:
             cwd=path,
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=3,
         )
         branch = result.stdout.strip()

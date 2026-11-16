@@ -1,2 +1,2 @@
-{"turn": 1, "input": "list the files in the workspace"}
-{"turn": 2, "input": "summarize what you found"}
+{"turn": 1, "input": "list the files in the workspace, then read notes.txt and report the seed value it contains"}
+{"turn": 2, "input": "summarize what you found in one sentence"}

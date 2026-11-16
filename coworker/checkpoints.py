@@ -69,7 +69,7 @@ def _load_json(path: Path, default: Any) -> Any:
         return json.loads(path.read_text(encoding="utf-8"))
     except FileNotFoundError:
         return default
-    except Exception:
+    except (OSError, ValueError):
         # Defensive parse (same posture as sessions/grants): a corrupt file
         # degrades to "no history" instead of killing the server.
         return default

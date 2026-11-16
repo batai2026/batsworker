@@ -32,6 +32,22 @@ on:
         description: "基线漂移即失败（1=开启，0=仅参照）"
         required: false
         default: "1"
+      auto_approve:
+        description: "自动批准工具调用（1=开，0=关）——只有需要真跑工具的用例才开"
+        required: false
+        default: "0"
+      max_turns:
+        description: "只跑前 N 轮（0 = 全部）——热身时填 1"
+        required: false
+        default: "0"
+      turn_timeout:
+        description: "单轮墙钟上限（秒）——端点不可达时让该轮快速记为 timeout"
+        required: false
+        default: "180"
+      baseline_file:
+        description: "基线文件名（相对 case 目录）—— 真实模型用 real-baseline.json"
+        required: false
+        default: real-baseline.json
 
 # Read-only token: the matrix job holds provider API keys and neither job needs to
 # write to the repository.
@@ -76,6 +92,8 @@ jobs:
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
       ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
       DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+      SCNET_API_KEY: ${{ secrets.SCNET_API_KEY }}
+      UNISOUND_API_KEY: ${{ secrets.UNISOUND_API_KEY }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -106,12 +124,31 @@ jobs:
           HARNESSES: ${{ inputs.harnesses }}
           MAX_RATIO: ${{ inputs.max_bytes_ratio }}
           GATE: ${{ inputs.check_baseline }}
+          AUTO_APPROVE: ${{ inputs.auto_approve }}
+          MAX_TURNS: ${{ inputs.max_turns }}
+          TURN_TIMEOUT: ${{ inputs.turn_timeout }}
+          BASELINE_FILE: ${{ inputs.baseline_file }}
         run: |
           args=(--case "$CASE" --models "$MODELS" --harnesses "$HARNESSES"
                 --workspace "${{ runner.temp }}/eval-ws"
                 --max-bytes-ratio "$MAX_RATIO"
+                --timeout "$TURN_TIMEOUT"
                 --out "${{ runner.temp }}/eval-report.json")
           if [ "$GATE" = "1" ]; then args+=(--check-baseline); fi
+          if [ "$AUTO_APPROVE" = "1" ]; then args+=(--auto-approve); fi
+          if [ "$MAX_TURNS" != "0" ]; then args+=(--max-turns "$MAX_TURNS"); fi
+          # 真实模型必须比自己的基线：real-baseline.json 按 (harness, model) 存，
+          # 拿 stub 基线 (3132/3221 字节) 去卡 SCNet-Max (9109) 只会必然失败。
+          base_path="$CASE/$BASELINE_FILE"
+          if [ -f "$base_path" ]; then
+            args+=(--baseline-file "$base_path")
+          elif [ "$GATE" = "1" ]; then
+            echo "no $base_path — run once with check_baseline=0, then save the report as $BASELINE_FILE before enabling the gate"
+            exit 1
+          fi
+          # Off by default: with it on the engine auto-approves tool calls, which changes
+          # what the matrix measures (tool-using vs reasoning-only) — record those runs
+          # against their own baseline instead of mixing them.
           python -m coworker.eval.matrix "${args[@]}"
       - uses: actions/upload-artifact@v4
         if: always()

@@ -288,6 +288,10 @@ COMPAT_VENDORS = {
     "qwen": "https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
     "xai": "https://api.x.ai/v1",
     "mistral": "https://api.mistral.ai/v1",
+    # Domestic MaaS gateways: OpenAI-compatible, so they ride the same descriptor/builder
+    # path and keep their keys isolated from OpenAI/Anthropic.
+    "scnet": "https://api.scnet.cn/api/llm/v1",
+    "unisound": "https://maas-api.unisound.com/v1",
 }
 
 
