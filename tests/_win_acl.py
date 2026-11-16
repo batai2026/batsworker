@@ -40,9 +40,35 @@ from pathlib import Path
 
 # -NonInteractive: never wait on a prompt. -NoProfile: a user profile script cannot
 # change the output shape. Output written to a file, encoded utf8 explicitly.
+#
+# The DACL is read through .NET rather than the `Get-Acl` cmdlet, because `Get-Acl`
+# lives in Microsoft.PowerShell.Security and depends on module auto-loading. GitHub's
+# Windows runner ships a PSModulePath that does not resolve it, so `Get-Acl` fails there
+# with "CouldNotAutoloadMatchingModule" while working fine on a normal desktop -- a test
+# helper that only works on the developer's machine is not a test helper. The cmdlet is
+# kept as a fallback, imported by explicit path rather than by auto-discovery.
 _PS_SCRIPT = r"""
 $ErrorActionPreference = 'Stop'
-$acl = Get-Acl -LiteralPath $env:PROBE_TARGET
+$target = $env:PROBE_TARGET
+
+function Read-Dacl([string] $path) {
+    # .NET first: no module lookup involved.
+    try {
+        $fi = New-Object System.IO.FileInfo($path)
+        return $fi.GetAccessControl()
+    } catch {
+        $firstError = $_.Exception.Message
+    }
+    # Fallback: load the shell's own copy of the module, by explicit path.
+    $manifest = Join-Path $PSHOME 'Modules\Microsoft.PowerShell.Security\Microsoft.PowerShell.Security.psd1'
+    if (Test-Path -LiteralPath $manifest) {
+        Import-Module -Name $manifest -ErrorAction Stop
+        return Get-Acl -LiteralPath $path
+    }
+    throw "could not read the DACL of ${path}: ${firstError}"
+}
+
+$acl = Read-Dacl $target
 $aces = @($acl.Access | ForEach-Object {
     [pscustomobject]@{
         sid       = $_.IdentityReference.Translate(
@@ -58,7 +84,8 @@ $result = [pscustomobject]@{
     inheritance_off = [bool]$acl.AreAccessRulesProtected
     aces            = $aces
 }
-$result | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $env:PROBE_OUT -Encoding utf8
+$json = $result | ConvertTo-Json -Depth 6
+[System.IO.File]::WriteAllText($env:PROBE_OUT, $json, (New-Object System.Text.UTF8Encoding($false)))
 """
 
 
@@ -112,7 +139,7 @@ def read_acl(path: Path | str) -> WindowsAcl:
         )
         if proc.returncode != 0:
             stderr = proc.stderr.decode("utf-8", "replace").strip()
-            raise RuntimeError(f"Get-Acl failed for {path}: {stderr}")
+            raise RuntimeError(f"reading the DACL failed for {path}: {stderr}")
         data = json.loads(out.read_text(encoding="utf-8-sig"))
 
     raw_aces = data.get("aces") or []
