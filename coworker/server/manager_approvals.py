@@ -6,6 +6,8 @@ imports are limited to what the moved code references; everything else resolves 
 
 from __future__ import annotations
 
+from .manager_base import ManagerBase
+
 from pathlib import Path
 from typing import Any, Optional
 
@@ -16,7 +18,7 @@ from ..permissions import Mode
 from .manager_helpers import _approval_body, _grant_offered
 
 
-class ApprovalsMixin:
+class ApprovalsMixin(ManagerBase):
     def list_audit(
         self,
         *,
