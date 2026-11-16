@@ -110,6 +110,10 @@ Contributions and bug reports are welcome - open an [issue](https://github.com/b
 For any PR, please attach screenshots of what was broken and how it is fixed now. We will shortly add features that you can contribute to.
 Please note that we are actively developing based off a internal list and goal, so we may not approve PRs that add features that are already under-development or deviates from our vision.
 
+Start with [CONTRIBUTING.md](CONTRIBUTING.md): it lists the exact commands CI runs
+(so you can reproduce a red build locally), the commit and branch conventions, the
+lockfile rules, and how dependency upgrades are sized and verified.
+
 ## License
 
 MIT - see [LICENSE](LICENSE).

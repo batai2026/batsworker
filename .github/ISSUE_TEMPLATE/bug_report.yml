@@ -1,0 +1,123 @@
+name: Bug report
+description: Something is broken, crashes, or behaves differently from the docs.
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report. The fields below are the ones that usually decide
+        whether an issue can be reproduced on the first try.
+
+        **Do not paste API keys, tokens, or the contents of `secrets.json`.**
+        Redact them (`sk-...`, `xoxb-...`) before attaching logs. If the problem
+        is a vulnerability — something an attacker could exploit — stop here and
+        report it privately as described in
+        [SECURITY.md](https://github.com/batai2026/batsworker/blob/main/SECURITY.md).
+
+  - type: checkboxes
+    id: preflight
+    attributes:
+      label: Before submitting
+      options:
+        - label: I searched the existing issues and this is not a duplicate.
+          required: true
+        - label: This is not a security vulnerability (those go to SECURITY.md).
+          required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: OpenWorker version
+      description: |
+        Settings → "Check for updates" reports either the newer version it found
+        or "You're on the latest version". From source, `coworker.__version__`
+        carries it, and the installer filename from the release page names the
+        version too. The app updates itself, so fixes reach installs quickly —
+        check whether a newer build is already on offer.
+      placeholder: "1.0.5"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: install
+    attributes:
+      label: How are you running it?
+      options:
+        - Windows installer (.msi / .exe)
+        - macOS installer (.dmg)
+        - From source (browser UI via Vite)
+        - From source (Tauri desktop shell)
+        - Docker image
+    validations:
+      required: true
+
+  - type: input
+    id: os
+    attributes:
+      label: OS and version
+      placeholder: "Windows 11 24H2 / macOS 15.2 (arm64) / Ubuntu 24.04"
+    validations:
+      required: true
+
+  - type: input
+    id: model
+    attributes:
+      label: Model provider and model id
+      description: |
+        Provider family and the model id are often the difference between a
+        general engine bug and one vendor's wire format. Redact the key itself.
+      placeholder: "Anthropic / claude-sonnet-4-5, or OpenAI / gpt-4.1"
+    validations:
+      required: false
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Numbered steps from a known state. Note whether it happens on a fresh session.
+      placeholder: |
+        1. Open a workspace at ~/projects/demo
+        2. Ask: "..."
+        3. Approve the file-write card
+        4. ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behaviour
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: What actually happened
+      description: |
+        Include the exact error text or a screenshot of the wrong state. For a
+        hang or a crash, say how long you waited and whether the app recovered.
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs or stack trace
+      description: |
+        Server output, the browser devtools console, or the Tauri console.
+        **Redact secrets, tokens, and personal file paths** before pasting.
+      render: shell
+    validations:
+      required: false
+
+  - type: textarea
+    id: extra
+    attributes:
+      label: Anything else
+      description: |
+        Does it reproduce with a different model or provider? Did it work in an
+        earlier version (name the version)? Custom config from `config.toml`?
+        Findings from the local `dependency-audit` workflow belong here too if
+        relevant.
+    validations:
+      required: false

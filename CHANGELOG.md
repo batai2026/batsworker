@@ -20,7 +20,15 @@ where this fork's own release line starts.
 
 ## [Unreleased]
 
-Nothing yet.
+### Added
+
+- `CONTRIBUTING.md` — the commands CI actually runs, commit/branch conventions,
+  the lockfile rules, how dependency upgrades are sized and verified, and the
+  release version-bump checklist.
+- Issue forms (bug report, feature request) and a pull request template under
+  `.github/`. The bug form routes vulnerabilities to the private channel in
+  `SECURITY.md` instead of a public issue, and the PR template asks for the
+  per-suite commands behind "tests pass".
 
 ## [1.0.5] — 2026-11-09
 
