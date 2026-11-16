@@ -145,8 +145,10 @@ actually automated today — stated plainly, gaps included:
   (`fail-on-vuln: true`). That flip was made only after the backlog drained: the exact
   job invocation (`--config=osv-scanner.toml --recursive ./`) returns "No issues
   found" and exit 0 on the current tree. Because every accept-list row carries an
-  `ignoreUntil` date, a lapsed acceptance makes its finding reappear and the scan exit
-  1 — debt with a due date turns the job red instead of rotting quietly.
+  `effectiveUntil` date, a lapsed acceptance makes its finding reappear and the scan exit
+  1 — debt with a due date turns the job red instead of rotting quietly. That key
+  needs osv-scanner >= 2.7.1, so the workflow pins osv-scanner-action v2.7.1; under
+  2.7.0 it is an unknown key and the config is rejected outright.
 - Not covered, three ways: (1) Python is scanned through `uv.lock`, so an environment
   resolved from `pyproject.toml` while ignoring the lockfile is outside the scan; (2)
   `uv.lock` includes dev and optional extras, so it overstates what actually ships;
