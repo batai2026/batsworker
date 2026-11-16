@@ -42,6 +42,19 @@ def gate(tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch) -> Any:
     return mod
 
 
+def gate_main(mod: Any, *args: str) -> int:
+    """Run the gate as if on win32.
+
+    Every test here writes a win32 baseline, and the gate picks its platform from
+    `platform.system()`. Without an explicit flag the same assertions pass on a Windows
+    developer machine and fail on the Linux CI runner, where "this platform" became
+    linux, no record existed for it, and the run silently compared against the merged
+    view instead. Pinning the platform is what makes these tests platform-independent,
+    which is the property the gate exists to have.
+    """
+    return mod.main([*args, "--platform", "win32"])
+
+
 def write_baseline(mod: Any, clean: list[str], dirty: dict[str, int],
                    totals: dict[str, int] | None = None, platform: str = "win32") -> None:
     """Write a single-platform baseline in the current (per-platform) layout."""
@@ -70,28 +83,28 @@ def test_regression_in_clean_file_fails(gate: Any) -> None:
     gate._files[:] = ["a.py", "b.py"]
     write_baseline(gate, clean=["a.py", "b.py"], dirty={})
     gate._counts.update({"a.py": 1})
-    assert gate.main([]) == 1
+    assert gate_main(gate) == 1
 
 
 def test_more_errors_in_dirty_file_fails(gate: Any) -> None:
     gate._files[:] = ["a.py"]
     write_baseline(gate, clean=[], dirty={"a.py": 3})
     gate._counts.update({"a.py": 4})
-    assert gate.main([]) == 1
+    assert gate_main(gate) == 1
 
 
 def test_total_growth_fails(gate: Any) -> None:
     gate._files[:] = ["a.py", "b.py"]
     write_baseline(gate, clean=[], dirty={"a.py": 2, "b.py": 2}, totals={"win32": 4})
     gate._counts.update({"a.py": 3, "b.py": 2})
-    assert gate.main([]) == 1
+    assert gate_main(gate) == 1
 
 
 def test_unchanged_tree_passes(gate: Any) -> None:
     gate._files[:] = ["a.py", "b.py"]
     write_baseline(gate, clean=["b.py"], dirty={"a.py": 2})
     gate._counts.update({"a.py": 2})
-    assert gate.main([]) == 0
+    assert gate_main(gate) == 0
 
 
 # -- regressions that the first version of the gate had --------------------------
@@ -106,13 +119,13 @@ def test_new_clean_file_is_adopted_by_update(gate: Any) -> None:
     gate._files[:] = ["a.py", "new.py"]
     write_baseline(gate, clean=["a.py"], dirty={})
     gate._counts.clear()
-    assert gate.main(["--update"]) == 0
+    assert gate_main(gate, "--update") == 0
 
     assert "new.py" in win32_record(gate)["clean_files"], "new clean module not protected"
 
     # now break it: the gate must notice
     gate._counts.update({"new.py": 1})
-    assert gate.main([]) == 1, "error in a newly added module went unnoticed"
+    assert gate_main(gate) == 1, "error in a newly added module went unnoticed"
 
 
 def test_improvement_can_be_locked_in(gate: Any) -> None:
@@ -124,7 +137,7 @@ def test_improvement_can_be_locked_in(gate: Any) -> None:
     gate._files[:] = ["a.py"]
     write_baseline(gate, clean=[], dirty={"a.py": 5})
     gate._counts.update({"a.py": 2})
-    assert gate.main(["--update"]) == 0
+    assert gate_main(gate, "--update") == 0
     assert win32_record(gate)["dirty_files"]["a.py"] == 2
 
 
@@ -132,14 +145,14 @@ def test_deleting_a_clean_module_does_not_fail(gate: Any) -> None:
     """Removing a file is not a type regression."""
     gate._files[:] = ["a.py"]
     write_baseline(gate, clean=["a.py", "gone.py"], dirty={})
-    assert gate.main([]) == 0, "deleting a module was reported as a type regression"
+    assert gate_main(gate) == 0, "deleting a module was reported as a type regression"
 
 
 def test_update_prunes_deleted_module_from_baseline(gate: Any) -> None:
     gate._files[:] = ["a.py"]
     write_baseline(gate, clean=["a.py", "gone.py"], dirty={"gone.py": 3})
     gate._counts.clear()
-    assert gate.main(["--update"]) == 0
+    assert gate_main(gate, "--update") == 0
     assert "gone.py" not in win32_record(gate)["clean_files"]
     assert "gone.py" not in win32_record(gate)["dirty_files"]
 
@@ -164,11 +177,11 @@ def test_platform_difference_is_not_a_regression(gate: Any) -> None:
     # measuring win32: run.py has no error here, shell.py is clean here
     gate._counts.update({"shell.py": 0})
     gate._counts.clear()
-    assert gate.main([]) == 0, "a linux-only error failed the win32 run"
+    assert gate_main(gate) == 0, "a linux-only error failed the win32 run"
 
     # but an extra error on THIS platform still fails
     gate._counts.update({"run.py": 2})
-    assert gate.main([]) == 1
+    assert gate_main(gate) == 1
 
 
 def test_update_on_one_platform_preserves_the_other(gate: Any) -> None:
@@ -180,7 +193,7 @@ def test_update_on_one_platform_preserves_the_other(gate: Any) -> None:
     }}), encoding="utf-8")
 
     gate._counts.update({"a.py": 3})
-    assert gate.main(["--update"]) == 0
+    assert gate_main(gate, "--update") == 0
 
     data = read_baseline(gate)["platforms"]
     assert data["win32"]["dirty_files"]["a.py"] == 3, "win32 improvement not recorded"
@@ -199,7 +212,7 @@ def test_legacy_flat_baseline_is_still_read(gate: Any) -> None:
     }), encoding="utf-8")
 
     gate._counts.update({"a.py": 3})
-    assert gate.main([]) == 0
+    assert gate_main(gate) == 0
 
 
 def test_this_platform_record_decides_not_the_merged_view(gate: Any) -> None:
@@ -217,10 +230,10 @@ def test_this_platform_record_decides_not_the_merged_view(gate: Any) -> None:
     }}), encoding="utf-8")
 
     gate._counts.clear()
-    assert gate.main([]) == 0
+    assert gate_main(gate) == 0
 
     gate._counts.update({"run.py": 1})
-    assert gate.main([]) == 1, "a win32 error went unnoticed because linux disagrees"
+    assert gate_main(gate) == 1, "a win32 error went unnoticed because linux disagrees"
 
 
 def test_update_without_a_record_for_this_platform_uses_the_merge(gate: Any) -> None:
@@ -235,7 +248,7 @@ def test_update_without_a_record_for_this_platform_uses_the_merge(gate: Any) -> 
     }}), encoding="utf-8")
 
     gate._counts.update({"a.py": 1})
-    assert gate.main([]) == 0, "fell through to an empty baseline and failed falsely"
+    assert gate_main(gate) == 0, "fell through to an empty baseline and failed falsely"
     assert gate.basis_note({"linux": {}}, "win32") is not None
 
 
@@ -254,7 +267,7 @@ def test_reporting_does_not_claim_a_cross_platform_gap_as_an_improvement(
     }}), encoding="utf-8")
 
     gate._counts.clear()
-    assert gate.main([]) == 0
+    assert gate_main(gate) == 0
     out = capsys.readouterr().out
     assert "another platform" in out, "cross-platform gap reported as a plain improvement"
 
@@ -281,4 +294,4 @@ def test_unresolvable_project_is_a_loud_error(gate: Any, monkeypatch: pytest.Mon
     monkeypatch.setattr(gate, "run_mypy", lambda extra, plat: (_ for _ in ()).throw(
         SystemExit("Cannot find implementation or library stub")))
     with pytest.raises(SystemExit):
-        gate.main([])
+        gate_main(gate)
