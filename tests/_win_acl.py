@@ -97,6 +97,16 @@ class Ace:
     rights: str
 
 
+# Identities that can read any file regardless of its DACL, so their presence is not a
+# widening: LocalSystem and BUILTIN\Administrators can take ownership, and S-1-3-4
+# (OWNER RIGHTS) describes the owner's own rights rather than granting a third party.
+ALWAYS_PRIVILEGED_SIDS = frozenset({
+    "S-1-5-18",       # NT AUTHORITY\SYSTEM
+    "S-1-5-32-544",   # BUILTIN\Administrators
+    "S-1-3-4",        # OWNER RIGHTS
+})
+
+
 @dataclass(frozen=True)
 class WindowsAcl:
     me: str  # SID of the identity running the test
@@ -111,6 +121,23 @@ class WindowsAcl:
     @property
     def inherited_aces(self) -> list[Ace]:
         return [a for a in self.aces if a.inherited]
+
+    @property
+    def broad_allow_sids(self) -> set[str]:
+        """Grantees other than me and the always-privileged identities.
+
+        The point of the secrets-file check is "no one who could not already read the
+        whole disk has access". `LocalSystem` and `BUILTIN\\Administrators` can read any
+        file regardless of its DACL -- they can take ownership -- and `OWNER RIGHTS`
+        (S-1-3-4) describes the owner's rights rather than granting a third party
+        anything. Those appear on a freshly created file under a normal temp directory
+        and are not a widening, so treating them as a leak would fail a correctly
+        restricted file. The current user is not a third party either.
+
+        Everything else counts. Everyone, Users, Authenticated Users, a specific other
+        account -- all of those are real leaks and stay in the set.
+        """
+        return self.allow_sids - ALWAYS_PRIVILEGED_SIDS - {self.me}
 
     def describe(self) -> str:
         """Readable dump for assertion messages -- never the assertion itself."""

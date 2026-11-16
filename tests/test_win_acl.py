@@ -39,7 +39,12 @@ def test_reads_a_restricted_acl(tmp_path):
     acl = _win_acl.read_acl(p)
     assert acl.inheritance_off is True
     assert acl.inherited_aces == []
-    assert acl.allow_sids == {acl.me}
+    # The current user is granted, and nobody else beyond the identities that can read
+    # any file anyway. Asserting allow_sids == {me} instead assumed a bare temp directory
+    # with only one ACE, which is what a developer machine looks like and not what a CI
+    # runner looks like -- real files carry SYSTEM / Administrators / OWNER RIGHTS.
+    assert acl.me in acl.allow_sids
+    assert acl.broad_allow_sids == set(), acl.describe()
 
 
 def test_detects_an_acl_that_grants_someone_else(tmp_path):
@@ -59,8 +64,11 @@ def test_detects_an_acl_that_grants_someone_else(tmp_path):
     assert r.returncode == 0, r.stderr.decode("gbk", "replace")
 
     acl = _win_acl.read_acl(p)
-    assert acl.allow_sids == {_everyone_sid()}
-    assert acl.allow_sids != {acl.me}
+    # Everyone is still granted -- that is the leak this test is about -- regardless of
+    # whatever else the platform added (SYSTEM, Administrators, OWNER RIGHTS).
+    assert _everyone_sid() in acl.allow_sids, acl.describe()
+    assert acl.allow_sids != {acl.me}, acl.describe()
+    assert _everyone_sid() in acl.broad_allow_sids, acl.describe()
 
 
 def test_detects_inheritance_left_intact(tmp_path):
@@ -91,7 +99,8 @@ def test_allow_sids_counts_only_allow_aces(tmp_path):
     )
 
     acl = _win_acl.read_acl(p)
-    assert acl.allow_sids == {me}
+    assert acl.me in acl.allow_sids, acl.describe()
+    assert acl.broad_allow_sids == set(), acl.describe()
     assert any(a.type == "Deny" and a.sid == _everyone_sid() for a in acl.aces)
 
 

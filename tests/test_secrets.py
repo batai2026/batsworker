@@ -82,8 +82,12 @@ def test_secrets_file_is_restricted(tmp_path):
         # Inheritance really was stripped: nothing broad is inherited any more.
         assert acl.inheritance_off, f"inheritance not stripped:\n{acl.describe()}"
         assert not acl.inherited_aces, f"inherited ACEs remain:\n{acl.describe()}"
-        # Exactly one principal is granted, and it is this user.
-        assert acl.allow_sids == {acl.me}, (
+        # No third party is granted. `== {acl.me}` would additionally demand that the
+        # platform added nothing of its own, which is not a property of the code: a
+        # normal Windows file also carries SYSTEM, Administrators and OWNER RIGHTS, and
+        # those identities can read anything regardless of this DACL.
+        assert acl.me in acl.allow_sids, f"current user not granted:\n{acl.describe()}"
+        assert acl.broad_allow_sids == set(), (
             f"not restricted to the current user:\n{acl.describe()}"
         )
     else:
