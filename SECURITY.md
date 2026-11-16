@@ -5,7 +5,7 @@ terminal, and the accounts you connect. It also updates itself. That makes a
 security report about this project materially different from one about a library, so
 this file explains both **how to reach us** and **what we already consider in scope**.
 
-- Product: **OpenWorker** 路 package `coworker` 路 repo `batai2026/batsworker`
+- Product: **OpenWorker** · package `coworker` · repo `batai2026/batsworker`
 - Current release: **1.0.5**
 - Status: open beta
 
@@ -18,19 +18,19 @@ That channel is private between you and the maintainers, and it gives us a place
 develop and coordinate a fix before anything is public.
 
 Please **do not** open a public issue for a suspected vulnerability, and do not
-include live API keys, session tokens, or personal data in a report 鈥?redact them.
+include live API keys, session tokens, or personal data in a report — redact them.
 If a proof of concept needs a credential, use a throwaway.
 
 There is no security email alias on this repository, so a DM or a public issue is
 not a reliable way to reach us privately. If the private-report button is not
 available to you, open a public issue that says only "I have a security report,
-please enable private reporting" 鈥?no details 鈥?and we will open a private channel.
+please enable private reporting" — no details — and we will open a private channel.
 
 ### What to include
 
 - Affected version (`1.0.5`, or the installer filename you have)
 - Platform (macOS arm64 / macOS x64 / Windows) and how the app was installed
-- What an attacker gains 鈥?code execution, reading files outside the workspace,
+- What an attacker gains — code execution, reading files outside the workspace,
   exfiltrating connector tokens, bypassing an approval prompt
 - Reproduction steps, and whether it needs a malicious *model*, a malicious
   *connector*, or only local access
@@ -56,15 +56,15 @@ why. Credit in the advisory is offered unless you prefer to stay anonymous.
 ## Supported versions
 
 OpenWorker ships as a desktop app that updates itself, so in general only the latest
-release gets fixes 鈥?with one exception that matters more than the rest.
+release gets fixes — with one exception that matters more than the rest.
 
 | Version | Supported | Notes |
 | --- | --- | --- |
-| 1.0.5 | 鉁?| Current release; `v1.0.5` tag |
-| 1.0.5-rc1 | 鈿狅笍 pre-release | Tagged *after* `v1.0.5` (2026-11-12) and carries work not in the release, including `uv.lock`. No fixes promised; use 1.0.5 or later |
-| 1.0.4 | 鈿狅笍 upgrade required | Gets no fixes; please update to 1.0.5 |
-| 1.0.0 鈥?1.0.3 | 鉂?not supported | **Update immediately 鈥?see below** |
-| 0.x, upstream `andrewyng/openworker` | 鉂?| Different codebase; report upstream |
+| 1.0.5 | ✅ | Current release; `v1.0.5` tag |
+| 1.0.5-rc1 | ⚠️ pre-release | Tagged *after* `v1.0.5` (2026-11-12) and carries work not in the release, including `uv.lock`. No fixes promised; use 1.0.5 or later |
+| 1.0.4 | ⚠️ upgrade required | Gets no fixes; please update to 1.0.5 |
+| 1.0.0 — 1.0.3 | ❌ not supported | **Update immediately — see below** |
+| 0.x, upstream `andrewyng/openworker` | ❌ | Different codebase; report upstream |
 
 ### Why 1.0.3 and earlier must be updated
 
@@ -89,12 +89,12 @@ is documented here so users on old builds can act on it.
 
 Be aware of what the installers do and do not prove:
 
-- **macOS** 鈥?signed with a Developer ID and notarized when the release workflow has
+- **macOS** — signed with a Developer ID and notarized when the release workflow has
   its Apple secrets, with the hardened runtime enabled. Builds made without those
   secrets (forks, local runs) are unsigned and Gatekeeper will require
   `xattr -cr`. An unsigned build is not by itself evidence of tampering, but it also
   gives you no integrity guarantee.
-- **Windows** 鈥?Authenticode-signed **only when** the release workflow has
+- **Windows** — Authenticode-signed **only when** the release workflow has
   `WINDOWS_CERTIFICATE` / `WINDOWS_CERTIFICATE_PASSWORD` configured. Do not assume a
   valid signature on every published `.msi` / `.exe`.
 - **Update payloads** are always verified against the embedded minisign public key
@@ -104,13 +104,13 @@ Be aware of what the installers do and do not prove:
 
 ## Scope
 
-**In scope** 鈥?anything that breaks one of these boundaries:
+**In scope** — anything that breaks one of these boundaries:
 
 - Reading or writing files outside the workspace the user granted
 - Running commands, or reaching the network, without the approval the UI promised
 - Escaping the code-mode sandbox (fail-closed by design)
 - Leaking model API keys, connector tokens, or conversation content to a party the
-  user did not choose 鈥?including a model provider the user did not configure
+  user did not choose — including a model provider the user did not configure
 - Forging update payloads, or bypassing update signature verification
 - Defeating the local sidecar API's token check, or getting a cross-origin page to
   drive the local server
@@ -122,7 +122,7 @@ Be aware of what the installers do and do not prove:
 - Anything that requires the user to have installed a malicious build obtained
   elsewhere, or to have already been administrator/root on the machine
 - Prompt-injection *content* that produces a bad-but-permitted action when the
-  approval gate worked as designed 鈥?raise it as a design issue unless it crosses one
+  approval gate worked as designed — raise it as a design issue unless it crosses one
   of the boundaries above
 - Vulnerabilities in third-party dependencies with no reachable path in this
   codebase (advisories are tracked in `osv-scanner.toml`; a reachability argument is
@@ -132,12 +132,12 @@ Be aware of what the installers do and do not prove:
 ## How we handle dependency risk
 
 The app runs other people's code in the form of libraries, so here is what is
-actually automated today 鈥?stated plainly, gaps included:
+actually automated today — stated plainly, gaps included:
 
 - `osv-scanner` runs on every pull request (failing only on advisories the PR *adds*)
   and weekly against the full backlog. It reads `uv.lock`,
   `surfaces/gui/package-lock.json`, `stt/Cargo.lock` and
-  `surfaces/gui/src-tauri/Cargo.lock` 鈥?1,423 packages in total at 1.0.5.
+  `surfaces/gui/src-tauri/Cargo.lock` — 1,423 packages in total at 1.0.5.
 - `osv-scanner.toml` holds the accepted-risk list. Each entry carries a code-path
   justification and an expiry date, so an accepted advisory must be re-argued instead
   of ageing silently.
@@ -146,12 +146,12 @@ actually automated today 鈥?stated plainly, gaps included:
   job invocation (`--config=osv-scanner.toml --recursive ./`) returns "No issues
   found" and exit 0 on the current tree. Because every accept-list row carries an
   `ignoreUntil` date, a lapsed acceptance makes its finding reappear and the scan exit
-  1 鈥?debt with a due date turns the job red instead of rotting quietly.
+  1 — debt with a due date turns the job red instead of rotting quietly.
 - Not covered, three ways: (1) Python is scanned through `uv.lock`, so an environment
   resolved from `pyproject.toml` while ignoring the lockfile is outside the scan; (2)
   `uv.lock` includes dev and optional extras, so it overstates what actually ships;
   (3) CI installs `requirements-dev.lock`, which is `uv export`ed from `uv.lock` by
-  hand 鈥?a lock that drifts from that export is scanned but not installed from. The
+  hand — a lock that drifts from that export is scanned but not installed from. The
   version floors in `pyproject.toml` (e.g. `pypdf>=6.21.4`) remain the review-time
   control for the last two.
 
@@ -166,6 +166,6 @@ We will not pursue or support legal action against researchers who:
   before publishing
 
 If you are unsure whether something is allowed, ask first through the private report
-鈥?a question costs nothing.
+— a question costs nothing.
 
 Thank you for helping keep OpenWorker's users safe.
