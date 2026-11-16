@@ -1,0 +1,89 @@
+name: Feature request
+description: Propose a capability, an integration, or a change in behaviour.
+body:
+  - type: markdown
+    attributes:
+      value: |
+        OpenWorker is in beta and is built against an internal roadmap. A request
+        that overlaps work already in progress, or that pulls against the
+        project's direction, may be closed — that is a scope decision, not a
+        judgement of the idea. Describing the problem you hit is more useful than
+        describing the implementation you have in mind, because it lets a
+        maintainer tell you whether something already covers it.
+
+        Design docs for what exists today are in
+        [`docs/design/`](https://github.com/batai2026/batsworker/tree/main/docs/design) —
+        worth a skim before proposing, so you are not asking for something that
+        shipped last week.
+
+  - type: checkboxes
+    id: preflight
+    attributes:
+      label: Before submitting
+      options:
+        - label: I searched the existing issues and the design docs for this.
+          required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem are you trying to solve?
+      description: The situation and what gets in the way. Concrete beats general.
+      placeholder: |
+        When I run an automation on a schedule, I cannot tell from the Inbox
+        whether it ran and found nothing, or never ran at all.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What would you like to happen?
+      description: The behaviour you want, from the user's side.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      description: Best guess is fine; it only routes the issue.
+      options:
+        - Agent engine / turn loop
+        - Permissions and approvals
+        - Model providers
+        - Tools and skills
+        - Connectors (Gmail, Slack, GitHub, …)
+        - MCP client / servers
+        - Automations and schedules
+        - Inbox / teams / board
+        - Memory and personas
+        - Desktop app (GUI / Tauri)
+        - Voice input (STT)
+        - Installer, updates, packaging
+        - Docs
+        - Other / not sure
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives you have tried or considered
+      description: |
+        Including workarounds — a config setting, a persona, a different tool.
+        If a workaround exists, say why it is not good enough.
+    validations:
+      required: false
+
+  - type: textarea
+    id: contribution
+    attributes:
+      label: Would you like to work on it?
+      description: |
+        Saying yes does not commit you, and saying no does not weaken the
+        request. If yes, read [CONTRIBUTING.md](https://github.com/batai2026/batsworker/blob/main/CONTRIBUTING.md)
+        first — and expect a maintainer to confirm scope before you start, since
+        part of the roadmap is already in flight.
+    validations:
+      required: false
