@@ -240,10 +240,16 @@ jobs:
             choco install llvm -y --no-progress
           }
           "LIBCLANG_PATH=$llvm" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+      # `--locked` is load-bearing, not style. Without it cargo silently rewrites
+      # Cargo.lock inside the runner and compiles whatever the manifests resolve
+      # to, so a committed lock that has drifted from its manifest passes here and
+      # is only ever noticed by osv-scanner -- which audits the committed file and
+      # was therefore scoring versions no build produced. Broken in #39; this flag
+      # makes the next drift fail the step that should have caught it.
       - name: Clippy
         working-directory: surfaces/gui/src-tauri
         shell: pwsh
-        run: cargo clippy --all-targets -- -D warnings
+        run: cargo clippy --locked --all-targets -- -D warnings
       - name: Assert the bundled SPA keeps its layout
         shell: pwsh
         run: |
@@ -261,4 +267,4 @@ jobs:
           node -e "const c=require('./surfaces/gui/src-tauri/tauri.conf.json'); const r=(c.bundle&&c.bundle.resources)||{}; if(r['../dist']!=='dist'){console.error('bundle.resources must map ../dist -> dist, got '+JSON.stringify(r)); process.exit(1)}"
       - name: Test the STT sidecar
         shell: pwsh
-        run: cargo test --manifest-path stt/Cargo.toml
+        run: cargo test --locked --manifest-path stt/Cargo.toml
