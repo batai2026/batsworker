@@ -30,6 +30,21 @@ where this fork's own release line starts.
   `SECURITY.md` instead of a public issue, and the PR template asks for the
   per-suite commands behind "tests pass".
 
+### Changed — dependency and supply-chain work
+
+- `osv-scanner.toml` migrated from the deprecated `ignoreUntil` key to
+  `effectiveUntil`, which removes the deprecation warning osv-scanner printed on
+  every run. This couples the config to scanner >= 2.7.1, so the
+  `dependency-audit.yml` workflow pins `osv-scanner-action` at v2.7.1
+  (`32d3cd48`) in the same change; under 2.7.0 `effectiveUntil` is an unknown key
+  and the whole config would be rejected.
+- The accept-list is now one entry per advisory. Two entries were aliases of
+  entries already listed (`RUSTSEC-2026-0429` for `GHSA-q7v9-x93c-xqv3`,
+  `RUSTSEC-2024-0429` for `GHSA-wrw7-89jp-8q8g`), so they suppressed nothing and
+  the "20 entries" overstated the accepted count: it is 18 distinct advisories.
+  Verified by removing each entry in turn — the scanner re-reports exactly that
+  advisory and nothing else.
+
 ## [1.0.5] — 2026-11-09
 
 ### Changed — dependency and supply-chain work
