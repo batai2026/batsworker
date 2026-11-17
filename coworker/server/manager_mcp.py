@@ -6,6 +6,8 @@ imports are limited to what the moved code references; everything else resolves 
 
 from __future__ import annotations
 
+from .manager_base import ManagerBase
+
 import asyncio
 import logging
 import time
@@ -24,7 +26,7 @@ from .manager_helpers import _redact, _stable_error
 logger = logging.getLogger("coworker.manager")
 
 
-class McpMixin:
+class McpMixin(ManagerBase):
     # -- MCP --------------------------------------------------------------------
     async def prepare_mcp_tools(
         self, session_id: str, *, workspace: Optional[str] = None, agent: str = "code"

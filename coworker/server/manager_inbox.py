@@ -6,6 +6,8 @@ imports are limited to what the moved code references; everything else resolves 
 
 from __future__ import annotations
 
+from .manager_base import ManagerBase
+
 import asyncio
 from typing import Any, Optional
 
@@ -13,7 +15,7 @@ from ..connectors import load_settings, slack_split
 from .manager_helpers import _approval_body, _parse_inbox_json
 
 
-class InboxMixin:
+class InboxMixin(ManagerBase):
     def inbox_question_asker(self, session_id: str, agent: str):
         """The Unattended `ask_user` handler: turn the agent's question into an Inbox item and
         suspend until a human answers it (from the Inbox, or inline when they open the session).
