@@ -10,7 +10,7 @@
 #   docker build -t openworker:local .
 #   docker run --rm -v "$PWD:/workspace" openworker:local --cwd /workspace
 
-FROM python:3.12-slim AS build
+FROM python:3.15-slim AS build
 
 # pip install . needs git to fetch the pinned `aisuite` dependency.
 RUN apt-get update \
@@ -23,7 +23,7 @@ COPY coworker ./coworker
 COPY scripts ./scripts
 RUN pip install --no-cache-dir .
 
-FROM python:3.12-slim AS runtime
+FROM python:3.15-slim AS runtime
 
 # This image is published to GHCR and runs agent-driven shell commands, so it must
 # not run as root: uid 0 with the default capability set turns any tool-execution
@@ -38,7 +38,7 @@ ARG OPENWORKER_GID=1000
 
 WORKDIR /workspace
 # Copy the installed package + console script from the build stage.
-COPY --from=build /usr/local/lib/python3.12/site-packages /usr/local/lib/python3.12/site-packages
+COPY --from=build /usr/local/lib/python3.15/site-packages /usr/local/lib/python3.15/site-packages
 COPY --from=build /usr/local/bin/openworker-server /usr/local/bin/openworker-server
 
 ENV PYTHONUNBUFFERED=1 \
