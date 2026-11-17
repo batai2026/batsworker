@@ -1134,7 +1134,7 @@ function PdfViewer({ dataUrl }: { dataUrl: string }) {
           canvas.width = viewport.width;
           canvas.height = viewport.height;
           canvas.className = "artifact-pdf-page";
-          await page.render({ canvasContext: canvas.getContext("2d")!, viewport }).promise;
+          await page.render({ canvas, viewport }).promise;
           if (cancelled) return;
           el.appendChild(canvas);
         }
