@@ -477,7 +477,7 @@ fn start_recording() -> Result<Recording, String> {
     Ok(Recording {
         stream,
         samples,
-        sample_rate: config.sample_rate.0,
+        sample_rate: config.sample_rate,
     })
 }
 
@@ -509,7 +509,7 @@ fn build_stream(
     match sample_format {
         SampleFormat::F32 => device
             .build_input_stream(
-                config,
+                *config,
                 move |data: &[f32], _| append_frames(&samples, data, channels, |sample| sample),
                 on_error,
                 None,
@@ -517,7 +517,7 @@ fn build_stream(
             .map_err(|e| format!("Could not create microphone stream: {e}")),
         SampleFormat::I16 => device
             .build_input_stream(
-                config,
+                *config,
                 move |data: &[i16], _| {
                     append_frames(&samples, data, channels, |sample| {
                         sample as f32 / i16::MAX as f32
@@ -529,7 +529,7 @@ fn build_stream(
             .map_err(|e| format!("Could not create microphone stream: {e}")),
         SampleFormat::U16 => device
             .build_input_stream(
-                config,
+                *config,
                 move |data: &[u16], _| {
                     append_frames(&samples, data, channels, |sample| {
                         (sample as f32 / u16::MAX as f32) * 2.0 - 1.0
