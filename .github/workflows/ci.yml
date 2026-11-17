@@ -49,13 +49,29 @@ jobs:
       - name: mypy (ratchet)
         run: python tools/typecheck.py
 
+  # Two interpreters, on purpose. `pytest` has always run on 3.12 — that stays, so the
+  # line the suite is verified against does not silently become a different one. 3.15 is
+  # added because Dockerfile builds `python:3.15-slim` and the published image is what
+  # users run: before this axis existed, "the image is 3.15" had no test evidence at all,
+  # only `docker build` succeeding. `pyproject.toml` still declares `requires-python
+  # >=3.10`, so 3.12 remains the useful lower-bound contrast rather than dead weight.
+  #
+  # 3.15 runs on Linux only. The Windows job (`pytest-windows`) is the slowest in the
+  # matrix and exists to catch platform-only failures, not interpreter-only ones; adding
+  # a second interpreter there would double the most expensive leg to re-test the same
+  # stdlib delta. `fail-fast: false` so a 3.15-only break still reports 3.12's verdict.
   pytest:
+    name: pytest (${{ matrix.python-version }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.12", "3.15"]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
-          python-version: "3.12"
+          python-version: ${{ matrix.python-version }}
       - name: Install
         run: |
           python -m pip install --upgrade pip
