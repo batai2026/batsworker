@@ -357,7 +357,11 @@ fn verify_model_file(path: &Path) -> Result<(), String> {
         }
         hasher.update(&buffer[..count]);
     }
-    let actual = format!("{:x}", hasher.finalize());
+    let actual = hasher
+        .finalize()
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect::<String>();
     if actual != DEFAULT_MODEL_SHA256 {
         return Err(
             "The local voice model failed its checksum. Repair the download in Settings."
