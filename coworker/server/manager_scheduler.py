@@ -6,6 +6,8 @@ imports are limited to what the moved code references; everything else resolves 
 
 from __future__ import annotations
 
+from .manager_base import ManagerBase
+
 import asyncio
 import logging
 import time
@@ -19,7 +21,7 @@ from .manager_helpers import _epoch, _last_assistant_text, _recent_files
 logger = logging.getLogger("coworker.manager")
 
 
-class SchedulerMixin:
+class SchedulerMixin(ManagerBase):
     # -- self-wake resumption ---------------------------------------------------
     async def _scheduler_tick(self) -> None:
         """The shared per-tick work: resume due self-wakes, then drain team queues.

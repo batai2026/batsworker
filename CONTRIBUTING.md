@@ -159,14 +159,18 @@ Size the change to the advisory:
 Do **not** add a fixable advisory to `osv-scanner.toml`. That file is only for
 genuinely unfixable items, and every entry must carry:
 
-- an `ignoreUntil` date — when it passes, the finding returns to CI. Accepted
+- an `effectiveUntil` date — when it passes, the finding returns to CI. Accepted
   risk is debt with a due date, not silence; and
 - a justification naming the code path that makes it unreachable or
   unexploitable *here*. The CVSS score is not a justification.
 
-The key name matters: osv-scanner v2 spells it `ignoreUntil` on
-`[[IgnoredVulns]]` (`effectiveUntil` exists only on `[[PackageOverrides]]`), and
-the loader rejects the whole file on an unknown key — the scan then never runs.
+The key name matters, and it is version-coupled: `effectiveUntil` on
+`[[IgnoredVulns]]` needs osv-scanner **2.7.1 or newer**. On 2.7.0 it is an unknown
+key, the loader rejects the whole file and the scan exits non-zero, so every
+acceptance silently stops applying. `ignoreUntil` is the deprecated spelling that
+2.7.1 still honours (with a warning) and 2.7.0 understands. `.github/workflows/
+dependency-audit.yml` pins osv-scanner-action v2.7.1 to match; bump one, bump the
+other.
 
 Run the scan yourself before pushing a lockfile change:
 

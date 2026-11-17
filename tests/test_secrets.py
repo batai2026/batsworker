@@ -4,11 +4,14 @@ from __future__ import annotations
 
 import os
 import stat
-import subprocess
 import sys
 import time
 
 from coworker.secrets import SecretStore
+
+# tests/ has no __init__.py, so test modules are imported as top-level modules and this
+# must be an absolute import from the tests dir (pytest inserts it into sys.path).
+import _win_acl  # noqa: E402
 
 
 def test_put_get_round_trip(tmp_path):
@@ -63,22 +66,30 @@ def test_status_hides_values(tmp_path):
 def test_secrets_file_is_restricted(tmp_path):
     """The secrets file must be restricted to the current user. POSIX expresses this as mode
     0600; Windows has no such bits, so we assert the ACL instead (inheritance stripped, only
-    the current user granted)."""
+    the current user granted).
+
+    The Windows assertions read the DACL as SIDs rather than parsing `icacls` text. Text
+    output is localized (principal display names, status lines) and its bytes are encoded
+    with the console codepage -- GBK on a simplified-Chinese Windows -- so a substring
+    assertion either breaks or, worse, passes by accident. SIDs are locale- and
+    encoding-independent, and they pin the property we actually care about: which
+    identities hold access.
+    """
     path = tmp_path / "secrets.json"
     SecretStore(path).put("x", {"a": 1})
     if sys.platform == "win32":
-        out = subprocess.run(
-            ["icacls", str(path)],
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-        ).stdout
-        user = os.environ.get("USERNAME", "")
-        assert user and user in out  # current user is granted
-        # Inherited broad principals must be gone after /inheritance:r.
-        assert "NT AUTHORITY\\SYSTEM" not in out
-        assert "BUILTIN\\Administrators" not in out
+        acl = _win_acl.read_acl(path)
+        # Inheritance really was stripped: nothing broad is inherited any more.
+        assert acl.inheritance_off, f"inheritance not stripped:\n{acl.describe()}"
+        assert not acl.inherited_aces, f"inherited ACEs remain:\n{acl.describe()}"
+        # No third party is granted. `== {acl.me}` would additionally demand that the
+        # platform added nothing of its own, which is not a property of the code: a
+        # normal Windows file also carries SYSTEM, Administrators and OWNER RIGHTS, and
+        # those identities can read anything regardless of this DACL.
+        assert acl.me in acl.allow_sids, f"current user not granted:\n{acl.describe()}"
+        assert acl.broad_allow_sids == set(), (
+            f"not restricted to the current user:\n{acl.describe()}"
+        )
     else:
         assert stat.S_IMODE(os.stat(path).st_mode) == 0o600
 

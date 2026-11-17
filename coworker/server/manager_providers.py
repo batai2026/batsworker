@@ -6,6 +6,8 @@ imports are limited to what the moved code references; everything else resolves 
 
 from __future__ import annotations
 
+from .manager_base import ManagerBase
+
 from typing import Any, Optional
 
 from ..providers import (
@@ -16,7 +18,7 @@ from ..providers import (
 )
 
 
-class ProvidersMixin:
+class ProvidersMixin(ManagerBase):
     # -- web search -------------------------------------------------------------
     def get_web_search(self) -> dict[str, Any]:
         from ..config import load_config
