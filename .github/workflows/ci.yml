@@ -102,13 +102,19 @@ jobs:
             --entrypoint python \
             openworker:ci /check/check.py
 
+  # Node 22, not 20: `pdfjs-dist@6` declares `engines.node >=22.13.0 || >=24` and
+  # Node 20 went EOL in April 2026, so every GUI job here ran on an unsupported
+  # runtime. The floor is 22.13 rather than 22.0 because that is the first 22.x
+  # pdfjs accepts; `surfaces/gui/.npmrc` sets engine-strict so npm enforces the
+  # same floor locally instead of only warning. Applied to all four Node jobs
+  # (and the release build) so no leg can quietly drift back.
   gui-unit:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
           cache-dependency-path: surfaces/gui/package-lock.json
       - name: npm ci
@@ -129,7 +135,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
           cache-dependency-path: surfaces/gui/package-lock.json
       - name: npm ci
@@ -154,7 +160,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
           cache-dependency-path: surfaces/gui/package-lock.json
       - name: npm ci
@@ -189,7 +195,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
           cache-dependency-path: surfaces/gui/package-lock.json
       - name: Build the SPA that gets bundled
