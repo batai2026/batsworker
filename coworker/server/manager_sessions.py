@@ -6,6 +6,8 @@ imports are limited to what the moved code references; everything else resolves 
 
 from __future__ import annotations
 
+from .manager_base import ManagerBase
+
 import asyncio
 import logging
 import shutil
@@ -20,7 +22,7 @@ from ..sessions import SessionRecord
 logger = logging.getLogger("coworker.manager")
 
 
-class SessionsMixin:
+class SessionsMixin(ManagerBase):
     def session_timeline(self, session_id: str, *, limit: int = 500) -> list[dict[str, Any]]:
         return self.trace_store.session_spans(session_id, limit=limit)
 
