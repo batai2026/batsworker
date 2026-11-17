@@ -6,6 +6,8 @@ PluginManifest 适配层做 consent 预览，绝不落盘。
 
 from __future__ import annotations
 
+from .manager_base import ManagerBase
+
 import logging
 from pathlib import Path
 from typing import Any, Optional
@@ -17,7 +19,7 @@ def _fail(status: int, error: str) -> dict[str, Any]:
     return {"ok": False, "status": status, "error": error}
 
 
-class PluginsMixin:
+class PluginsMixin(ManagerBase):
     # -- 能力槽 -------------------------------------------------------------------
     def plugin_slots(self) -> dict[str, Any]:
         """catalog 能力槽 + 四类已安装扩展的统一清单（只读）。"""
