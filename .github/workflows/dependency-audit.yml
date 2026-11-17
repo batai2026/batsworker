@@ -11,6 +11,9 @@
 #   * push — same idea, but blocked against the commit being pushed from
 #     (`github.event.before`) instead of the base branch. Implemented in
 #     scripts/osv_delta.py; see the note below on why this is not a full scan.
+#     It still publishes the pushed tree's FULL results to code scanning, because
+#     code scanning replaces a ref's alert set wholesale: a job that only had the
+#     delta to upload would close the backlog alerts it was not asked about.
 #   * schedule / workflow_dispatch — full backlog scan, reported to the Security
 #     tab. Blocking: fail-on-vuln: true.
 #
@@ -184,6 +187,33 @@ jobs:
       # not have, and 2 when either scan result is unusable.
       - name: "Block only on findings this push introduces"
         run: python scripts/osv_delta.py --base base-results.json --head head-results.json
+
+  # Code scanning is a second consumer, separate from the gate above, and it needs
+  # the pushed TREE's whole result set -- not the delta.
+  #
+  # Why this is a separate job calling the official reusable workflow rather than
+  # four more steps inside push-delta: code scanning replaces a ref's alert set
+  # wholesale on each upload. Uploading only the delta would tell it that every
+  # backlog finding this push did not introduce had been fixed, and it would close
+  # those alerts. Hand-rolling the SARIF was the other option and was rejected --
+  # osv-scanner can emit --format=sarif natively, but its rule ids would not match
+  # the reporter-generated SARIF that pull_request and full-backlog upload, and the
+  # existing alerts would be re-opened under new ids. The reusable workflow keeps
+  # the ids identical across all three triggers.
+  #
+  # Deliberately NOT gating: fail-on-vuln is false. Blocking is push-delta's job,
+  # and failing here would re-block the push on exactly the backlog findings that
+  # the delta split exists to leave alone.
+  code-scanning:
+    if: github.event_name == 'push'
+    uses: "google/osv-scanner-action/.github/workflows/osv-scanner-reusable.yml@32d3cd482bdadfb38b186c0ad1b031902d55d932" # v2.7.1
+    with:
+      scan-args: |-
+        --config=osv-scanner.toml
+        --recursive
+        ./
+      fail-on-vuln: false
+      upload-sarif: true
 
   full-backlog:
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
