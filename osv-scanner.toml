@@ -182,3 +182,12 @@ reason = "zbus_names is unmaintained — Linux D-Bus helper pulled by Tauri. Inf
 id = "RUSTSEC-2026-0372"
 effectiveUntil = 2027-08-01
 reason = "zvariant_derive is unmaintained — proc-macro sibling of zvariant, pulled by Tauri. Informational only."
+
+[[IgnoredVulns]]
+id = "RUSTSEC-2026-0543"
+# Published 2026-09-14 but only surfaced here on 2026-11-17, when OSV's copy of the
+# advisory was modified (modified=2026-11-17T10:15:02Z). The lockfile already carried
+# chrono 0.4.45 at the last green run, so this is an advisory-database change, not a
+# dependency change: nothing in this PR touches a version.
+effectiveUntil = 2027-08-01
+reason = "chrono is unmaintained; all versions are affected and no fixed version exists. Not compiled here: the sole edge into chrono is serde_with 3.21.0, where chrono is an OPTIONAL dependency behind the `chrono_0_4` feature (dep:chrono_0_4), and tauri-utils declares serde_with = { version = \"3\" } with no features, so serde_with's default (std, macros) never activates it — std mentions chrono only as `chrono_0_4?/clock`, the ? form that is a no-op while the dependency is off. It sits in Cargo.lock, contributes nothing to the binary, and this repo never calls chrono directly. Drop the entry when Tauri's own serde_with usage stops naming chrono, or at the deadline."
