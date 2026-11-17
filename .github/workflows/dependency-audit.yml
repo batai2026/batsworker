@@ -5,15 +5,34 @@
 # this job is to keep that from being re-discovered by hand every quarter, and to
 # stop NEW vulnerable dependencies from landing without anyone noticing.
 #
-# Two modes, deliberately different:
-#   * pull_request — compares against the base branch and fails ONLY on
-#     vulnerabilities the PR adds. Existing accepted debt never blocks an
-#     unrelated change, so this check can be made blocking immediately.
-#   * schedule/push — full backlog scan, reported to the Security tab. This was
-#     non-blocking (fail-on-vuln: false) only until the backlog drained, and it is
-#     now blocking. Before flipping it I ran the job's exact invocation
-#     (--config=osv-scanner.toml --recursive ./) with osv-scanner 2.7.1: "No
-#     issues found", exit 0.
+# Three modes, and the split between them is the point:
+#   * pull_request — scans the base branch and the PR head, fails ONLY on
+#     vulnerabilities the PR adds.
+#   * push — same idea, but blocked against the commit being pushed from
+#     (`github.event.before`) instead of the base branch. Implemented in
+#     scripts/osv_delta.py; see the note below on why this is not a full scan.
+#   * schedule / workflow_dispatch — full backlog scan, reported to the Security
+#     tab. Blocking: fail-on-vuln: true.
+#
+# Why push stopped being a full scan (2026-11-17). It went red twice in one day on
+# commits that had nothing to do with the finding, which is how a gate gets
+# ignored:
+#
+#   * RUSTSEC-2026-0543 (chrono, unmaintained). OSV re-published the record at
+#     10:15Z. The last green audit was 05:31Z (79f3a37, #32) and chrono was
+#     already in the lockfile then; the red runs (#36 at 12:12Z, #37 at 12:15Z)
+#     touched a CI matrix and a Node version.
+#   * GHSA-fc5q-39xc-vjpf (picomatch). The advisory became github_reviewed at
+#     15:56Z. `surfaces/gui/package-lock.json` was on exactly the same three
+#     picomatch versions (4.0.4, 4.0.7, 4.0.7) at the last green run and at the
+#     red one; #40 changed two cargo command lines.
+#
+# Both findings are real and both were handled (a dated acceptance each, after
+# checking there is no released fix to upgrade to -- picomatch 4.0.7 IS the newest
+# published version). Neither is a thing the pushing author changed. So the push
+# gate now asks the only question an author can act on: did MY commit introduce
+# this? Advisory drift against unchanged code still blocks, but on the scheduled
+# run, once a week, for whoever is on audit duty -- not on a random docs commit.
 #
 #     What "drained" means here, measured rather than assumed. On the parent
 #     commit (rustix 1.1.4) the scan reports 21 rows across 13 packages; the
@@ -95,16 +114,88 @@ jobs:
         --recursive
         ./
 
+  push-delta:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # The base commit has to be in the local object database to check out.
+          fetch-depth: 0
+
+      # Scan the tree being pushed FROM, then the tree being pushed TO, with the
+      # same scanner and the same OSV data. Scanning both sides live is what makes
+      # a freshly published advisory cancel out instead of turning the push red:
+      # if OSV learned something new today, both scans see it. Committing a
+      # baseline file instead would go stale exactly when OSV moves, which is the
+      # bug this job exists to remove. Keep this shape in sync with
+      # osv-scanner-reusable-pr.yml, which does the same two-scan dance.
+      - name: "Check out the commit being pushed from"
+        env:
+          BASE_SHA: ${{ github.event.before }}
+        run: |
+          if [ -z "$BASE_SHA" ] || [ "$BASE_SHA" = "0000000000000000000000000000000000000000" ]; then
+            echo "::error::No base commit in the push event, so there is nothing to diff against."
+            echo "This happens on the first push to a new branch. Re-run the workflow manually"
+            echo "(workflow_dispatch) for a full backlog scan instead."
+            exit 1
+          fi
+          git checkout -f "$BASE_SHA"
+          echo "Base tree: $(git rev-parse --short HEAD)"
+
+      - name: "Scan the base tree"
+        uses: google/osv-scanner-action/osv-scanner-action@0e457b42d0120153c352875e9b758b1e5c58c7e5 # v2.7.1
+        # Exits non-zero both for "found vulnerabilities" and for "the scan broke",
+        # so the outcome cannot be interpreted here. scripts/osv_delta.py refuses to
+        # read a missing or malformed result file as "no new findings".
+        continue-on-error: true
+        with:
+          scan-args: |-
+            --format=json
+            --output=base-results.json
+            --config=osv-scanner.toml
+            --recursive
+            ./
+
+      - name: "Check out the pushed tree"
+        env:
+          HEAD_SHA: ${{ github.sha }}
+        run: |
+          git checkout -f "$HEAD_SHA"
+          echo "Head tree: $(git rev-parse --short HEAD)"
+
+      - name: "Scan the pushed tree"
+        uses: google/osv-scanner-action/osv-scanner-action@0e457b42d0120153c352875e9b758b1e5c58c7e5 # v2.7.1
+        continue-on-error: true
+        with:
+          scan-args: |-
+            --format=json
+            --output=head-results.json
+            --config=osv-scanner.toml
+            --recursive
+            ./
+
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+
+      # The script is stdlib-only on purpose: no install step, nothing for a
+      # compromised registry to serve. It exits 1 on a finding the base tree did
+      # not have, and 2 when either scan result is unusable.
+      - name: "Block only on findings this push introduces"
+        run: python scripts/osv_delta.py --base base-results.json --head head-results.json
+
   full-backlog:
-    if: github.event_name != 'pull_request'
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     uses: "google/osv-scanner-action/.github/workflows/osv-scanner-reusable.yml@32d3cd482bdadfb38b186c0ad1b031902d55d932" # v2.7.1
     with:
       scan-args: |-
         --config=osv-scanner.toml
         --recursive
         ./
-      # Blocking. Verified by running this exact invocation locally: 0 results,
-      # exit 0, on the tree that carries the rustix 1.1.6 bump this branch is
-      # stacked on. Every accepted entry is expiry-dated, so a stale acceptance
-      # turns this job red instead of silently rotting.
+      # Blocking, and this is the job that catches advisory drift: a finding
+      # published against code nobody touched shows up here. It runs on a schedule
+      # precisely so that a red run arrives on audit day, not attached to whatever
+      # commit happened to be in flight. Every accepted entry is expiry-dated, so a
+      # stale acceptance turns this job red instead of rotting quietly.
       fail-on-vuln: true
