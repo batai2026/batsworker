@@ -6,6 +6,8 @@ imports are limited to what the moved code references; everything else resolves 
 
 from __future__ import annotations
 
+from .manager_base import ManagerBase
+
 import os
 import re
 import shlex
@@ -23,7 +25,7 @@ from ..workspace_trust import WorkspaceTrustStore
 from .manager_helpers import _git_branch
 
 
-class WorkspacesMixin:
+class WorkspacesMixin(ManagerBase):
     # -- workspaces -------------------------------------------------------------
     def open_workspace(self, path: str, *, create: bool = False) -> dict[str, Any]:
         resolved = Path(path).expanduser()

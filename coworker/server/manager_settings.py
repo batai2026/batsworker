@@ -6,6 +6,8 @@ imports are limited to what the moved code references; everything else resolves 
 
 from __future__ import annotations
 
+from .manager_base import ManagerBase
+
 import json
 from pathlib import Path
 from typing import Any, Optional
@@ -13,7 +15,7 @@ from typing import Any, Optional
 from ..connectors import experimental_enabled
 
 
-class SettingsMixin:
+class SettingsMixin(ManagerBase):
     # -- settings / prefs (model API key, default model, onboarding) -------------
     def _prefs_path(self) -> Path:
         return self._data_base / "prefs.json"
