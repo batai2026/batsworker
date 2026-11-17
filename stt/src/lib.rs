@@ -163,15 +163,16 @@ impl Dictation {
             // Per-read timeout, not overall: a 142 MB transfer legitimately takes minutes, but
             // a stalled connection must surface as an error — the cancel flag is only observed
             // between reads, so an indefinitely blocked read would also make Cancel unresponsive.
-            let agent = ureq::AgentBuilder::new()
-                .timeout_connect(std::time::Duration::from_secs(30))
-                .timeout_read(std::time::Duration::from_secs(30))
-                .build();
+            let agent = ureq::Agent::config_builder()
+                .timeout_connect(Some(std::time::Duration::from_secs(30)))
+                .timeout_per_read(Some(std::time::Duration::from_secs(30)))
+                .build()
+                .new_agent();
             let response = agent
                 .get(DEFAULT_MODEL_URL)
                 .call()
                 .map_err(|e| format!("Could not download the local voice model: {e}"))?;
-            let mut input = response.into_reader();
+            let mut input = response.into_parts().1.into_reader();
             let mut output = fs::File::create(&partial)
                 .map_err(|e| format!("Could not save the local voice model: {e}"))?;
             let mut downloaded = 0_u64;
