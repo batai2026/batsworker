@@ -6,6 +6,8 @@ imports are limited to what the moved code references; everything else resolves 
 
 from __future__ import annotations
 
+from .manager_base import ManagerBase
+
 import os
 from pathlib import Path
 from typing import Any, Optional
@@ -13,7 +15,7 @@ from typing import Any, Optional
 from .manager_helpers import _artifact_kind
 
 
-class ArtifactsMixin:
+class ArtifactsMixin(ManagerBase):
     def _artifact_scan_root(self, session_id: str) -> Optional[Path]:
         """The dir the Artifacts panel lists: the session's SCRATCH surface only
         (workspace-scratch-design.md §2.5). For orphan sessions that's the workspace

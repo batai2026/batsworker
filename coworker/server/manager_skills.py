@@ -6,6 +6,8 @@ imports are limited to what the moved code references; everything else resolves 
 
 from __future__ import annotations
 
+from .manager_base import ManagerBase
+
 from pathlib import Path
 from typing import Any, Optional
 
@@ -13,7 +15,7 @@ from ..secrets import state_dir
 from ..skills import SkillLoader, effective_skills
 
 
-class SkillsMixin:
+class SkillsMixin(ManagerBase):
     # -- skills (SKILLS-SPEC §4.4) ------------------------------------------------
     def list_skills(self, workspace: Optional[str] = None) -> list[dict[str, Any]]:
         """Enriched rows for the Settings screen (scope/source/enabled). Optional workspace

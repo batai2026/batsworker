@@ -6,6 +6,8 @@ imports are limited to what the moved code references; everything else resolves 
 
 from __future__ import annotations
 
+from .manager_base import ManagerBase
+
 import asyncio
 import logging
 import os
@@ -30,7 +32,7 @@ from ..teams.registry import TeamWorker
 logger = logging.getLogger("coworker.manager")
 
 
-class TeamsMixin:
+class TeamsMixin(ManagerBase):
     # ------------------------------------------------------------- agent teams (OPE-96)
 
     # ------------------------------------------------- project identity (pass 20)
