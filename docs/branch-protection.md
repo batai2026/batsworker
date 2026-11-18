@@ -1,7 +1,7 @@
 # Branch protection on `main`
 
 What gates a merge, why each check is (or is not) in the required set, and how to
-change it. Last updated 2026-11-18.
+change it. Last updated 2026-11-19.
 
 ## Current configuration
 
@@ -10,14 +10,14 @@ back after the change, not from the UI.
 
 | setting | value |
 |---|---|
-| required checks | **12** (listed below) |
+| required checks | **13** (listed below) |
 | strict (up to date before merge) | **true** |
 | enforce admins | true |
 | required linear history | **false** |
 | force pushes / deletions | false / false |
 | required PR reviews | none |
 
-### The 12 required checks
+### The 13 required checks
 
 | check | job time | what it protects |
 |---|---|---|
@@ -25,6 +25,7 @@ back after the change, not from the UI.
 | `typecheck` | 0m58s | mypy ratchet (`tools/typecheck.py`) |
 | `gate-stub` | 0m33s | eval baseline (deterministic stub case) |
 | `new-vulnerabilities / osv-scan` | 0m29s | dependency delta — fails only on vulns the PR *adds* |
+| `suppression-register` | 0m05s | dead/stale `osv-scanner.toml` exemptions + expiry register drift |
 | `gui-unit` | 0m32s | vitest |
 | `gui-unit-windows` | 1m25s | vitest on Windows |
 | `docker-image` | 1m01s | image builds + isolation self-check |
@@ -47,6 +48,11 @@ Wall clock is set by `pytest-windows` at ~13 min; every other job finishes insid
 reports on a pull request leaves the PR permanently pending** and blocks every
 merge forever. They stay advisory on PRs by design; `push-delta` still blocks the
 push to `main`.
+
+`suppression-register` sits in the same workflow but is guarded the other way —
+`if: github.event_name != 'schedule'` — so it does report on pull requests, and is
+therefore required. Its guard excludes only the weekly cron, where the full backlog
+scan already evaluates the same file.
 
 `docker` and `Release` workflows trigger on `push` / tags only — nothing to
 require on a PR.
@@ -85,6 +91,10 @@ PUT /pulls/46/merge -> HTTP 405
 The PR was then closed without merging and the branch deleted. The `2 of 12`
 is `lint` failing plus `pytest-windows` still in progress at that moment — which
 is also the reason a *pending* required check blocks: GitHub waits.
+
+(The `12` in the quoted response is the required-check count *at the time of that
+canary*; the set has since grown to 13 with `suppression-register`. The API message
+is quoted verbatim rather than rewritten, so it is not a typo.)
 
 ## Changing this configuration
 
