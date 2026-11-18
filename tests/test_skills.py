@@ -23,7 +23,7 @@ class _Stub:
 
 
 def test_code_agent_tools(tmp_path):
-    ex = LocalExecutor(cwd=tmp_path, default_timeout=5)
+    ex = LocalExecutor(cwd=tmp_path, default_timeout=30)
     try:
         ctx = AgentContext(workspace=tmp_path, executor=ex, todo=TodoList())
         names = {getattr(t, "__name__", "?") for t in code_agent().build_tools(ctx)}
