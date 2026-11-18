@@ -33,7 +33,7 @@ body:
         carries it, and the installer filename from the release page names the
         version too. The app updates itself, so fixes reach installs quickly —
         check whether a newer build is already on offer.
-      placeholder: "1.0.5"
+      placeholder: "1.0.6"
     validations:
       required: true
 

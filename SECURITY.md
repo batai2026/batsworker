@@ -6,7 +6,7 @@ security report about this project materially different from one about a library
 this file explains both **how to reach us** and **what we already consider in scope**.
 
 - Product: **OpenWorker** · package `coworker` · repo `batai2026/batsworker`
-- Current release: **1.0.5**
+- Current release: **1.0.6**
 - Status: open beta
 
 ## Reporting a vulnerability
@@ -28,7 +28,7 @@ please enable private reporting" — no details — and we will open a private c
 
 ### What to include
 
-- Affected version (`1.0.5`, or the installer filename you have)
+- Affected version (`1.0.6`, or the installer filename you have)
 - Platform (macOS arm64 / macOS x64 / Windows) and how the app was installed
 - What an attacker gains — code execution, reading files outside the workspace,
   exfiltrating connector tokens, bypassing an approval prompt
@@ -60,9 +60,10 @@ release gets fixes — with one exception that matters more than the rest.
 
 | Version | Supported | Notes |
 | --- | --- | --- |
-| 1.0.5 | ✅ | Current release; `v1.0.5` tag |
-| 1.0.5-rc1 | ⚠️ pre-release | Tagged *after* `v1.0.5` (2026-11-12) and carries work not in the release, including `uv.lock`. No fixes promised; use 1.0.5 or later |
-| 1.0.4 | ⚠️ upgrade required | Gets no fixes; please update to 1.0.5 |
+| 1.0.6 | ✅ | Current release; `v1.0.6` tag |
+| 1.0.5 | ✅ | Previous release; gets fixes until 1.0.7 |
+| 1.0.5-rc1 | ⚠️ pre-release | Tagged *after* `v1.0.5` (2026-11-12) and carries work not in the release, including `uv.lock`. No fixes promised; use 1.0.6 or later |
+| 1.0.4 | ⚠️ upgrade required | Gets no fixes; please update to 1.0.6 |
 | 1.0.0 — 1.0.3 | ❌ not supported | **Update immediately — see below** |
 | 0.x, upstream `andrewyng/openworker` | ❌ | Different codebase; report upstream |
 
@@ -80,7 +81,7 @@ installed, and run. **1.0.4** rotated the updater to this project's own key and 
 own release feed (`github.com/batai2026/batsworker/releases/latest/download/latest.json`);
 1.0.5 and later carry the same configuration.
 
-If you are running 1.0.3 or earlier, install 1.0.5 from
+If you are running 1.0.3 or earlier, install 1.0.6 from
 <https://github.com/batai2026/batsworker/releases> rather than relying on the in-app
 updater, since in those versions the updater is the thing you should not trust. This
 is documented here so users on old builds can act on it.
@@ -137,7 +138,7 @@ actually automated today — stated plainly, gaps included:
 - `osv-scanner` runs on every pull request (failing only on advisories the PR *adds*)
   and weekly against the full backlog. It reads `uv.lock`,
   `surfaces/gui/package-lock.json`, `stt/Cargo.lock` and
-  `surfaces/gui/src-tauri/Cargo.lock` — 1,423 packages in total at 1.0.5.
+  `surfaces/gui/src-tauri/Cargo.lock` — 1,334 packages in total at 1.0.6.
 - `osv-scanner.toml` holds the accepted-risk list. Each entry carries a code-path
   justification and an expiry date, so an accepted advisory must be re-argued instead
   of ageing silently.
@@ -150,7 +151,7 @@ actually automated today — stated plainly, gaps included:
   to flag. Each dead row also silently covers any *future* finding for its crate.
 - `docs/dependency-risk-register.md` is generated from that config
   (`--markdown`), soonest due date first, and is compared against it in CI. Seven
-  acceptances are live at 1.0.5; the nearest lapses 2027-03-01 (glib, blocker: gtk
+  acceptances are live at 1.0.6; the nearest lapses 2027-03-01 (glib, blocker: gtk
   0.18 pins glib ^0.18 upstream).
 - Both jobs are blocking as of 2026-11-15, including the weekly full-backlog scan
   (`fail-on-vuln: true`). That flip was made only after the backlog drained: the exact
