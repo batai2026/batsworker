@@ -1,4 +1,51 @@
 /* Tailwind layer — utilities for the mock-parity restyle. Imported before styles.css so the
-   app's existing base rules still win on surfaces not yet ported to utility classes. */
+   app's existing base rules still win on surfaces not yet ported to utility classes.
+
+   Tokens live here rather than in tailwind.config.js: under Tailwind v4 the `@config`
+   escape hatch did NOT pick up this project's JS config, and the failure was silent —
+   the build succeeded and every stock utility was emitted, but the 21 colour utilities
+   the app actually uses (bg-panel, text-ink, border-line, hover:bg-chromeHover, …)
+   compiled to nothing. This is v4's native form, and it does emit them.
+
+   Two conventions carried over from the old config, both deliberate:
+     * Keys keep their exact casing (--color-chromeHover, --color-lineStrong). v4 derives
+       the utility name verbatim from the variable, and the JSX already says
+       `hover:bg-chromeHover` / `border-lineStrong`; kebab-casing them would rename every
+       call site.
+     * Values stay `var(--x)`, i.e. the CSS custom properties defined in styles.css, so
+       light/dark theming keeps one source of truth. v4 handles `/NN` opacity on these
+       itself (`bg-panel/70`), which is what the old color-mix() wrapper was for. */
+
 @import "tailwindcss";
-@config "../tailwind.config.js";
+
+@theme {
+  --color-paper: var(--paper);
+  --color-panel: var(--panel);
+  --color-canvas: var(--canvas);
+  --color-chrome: var(--chrome);
+  --color-chromeHover: var(--chrome-hover);
+  --color-ink: var(--ink);
+  --color-muted: var(--muted);
+  --color-faint: var(--faint);
+  --color-line: var(--line);
+  --color-lineStrong: var(--line-strong);
+  --color-accent: var(--accent);
+  --color-accentSoft: var(--accent-soft);
+  --color-ok: var(--ok);
+  --color-okSoft: var(--ok-soft);
+  --color-okLine: var(--ok-line);
+  --color-warnInk: var(--warn-ink);
+  --color-warnSoft: var(--warn-soft);
+  --color-danger: var(--danger);
+  --color-dangerSoft: var(--danger-soft);
+  --color-tealInk: var(--teal-ink);
+  --color-tealSoft: var(--teal-soft);
+  --color-tealLine: var(--teal-line);
+  --color-solid: var(--solid);
+  --color-onSolid: var(--on-solid);
+
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "Inter", system-ui, sans-serif;
+  --font-mono: "SF Mono", "JetBrains Mono", "Menlo", monospace;
+
+  --radius-xl2: 14px;
+}
