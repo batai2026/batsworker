@@ -172,6 +172,35 @@ acceptance silently stops applying. `ignoreUntil` is the deprecated spelling tha
 dependency-audit.yml` pins osv-scanner-action v2.7.1 to match; bump one, bump the
 other.
 
+**An acceptance also has to stay true.** Two more things are enforced, because
+both failed silently on the 2026-11-18 audit:
+
+```shell
+python scripts/check_suppressions.py
+```
+
+- The entry's package must still be in a lockfile, and still be pinned *below*
+  the advisory's fixed version. If the crate is gone, or has moved past the fix,
+  the entry suppresses nothing — worse, it hides any future finding for that
+  crate. `osv-scanner` does not catch this: the id still exists, it just no
+  longer describes this tree. For `zip` that would have covered a regression in a
+  code path the updater really does reach on Windows.
+- The id must map to a package at all. The map lives in the script's `ADVISORIES`
+  table because osv-scanner **rejects** a `package` key here (unknown key → whole
+  config refused → every acceptance off). An unmapped id fails CI; add it to that
+  table or delete the entry.
+
+Then regenerate the due-date table, which is what makes the calendar visible
+instead of something to remember:
+
+```shell
+python scripts/check_suppressions.py --markdown docs/dependency-risk-register.md
+```
+
+`docs/dependency-risk-register.md` is generated. A stale copy fails CI, so do not
+hand-edit it — an acceptance that lapses is meant to be seen coming, not
+discovered on a red Monday.
+
 Run the scan yourself before pushing a lockfile change:
 
 ```shell

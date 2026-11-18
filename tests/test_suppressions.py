@@ -1,0 +1,320 @@
+"""Tests for scripts/check_suppressions.py -- dead and unmapped acceptances.
+
+The point of this check is to fail on debt that has quietly stopped mattering.
+A test suite that only proves it *passes* on a clean config would let it rot
+back into decoration, so every failure mode it exists for gets a case here,
+built from a synthetic lockfile tree so the real one can move freely:
+
+  * a package absent from every lockfile (the unic-* case)
+  * a package present but pinned past the fixed version (the zip case)
+  * an id that maps to no advisory at all (the phantom 21st entry)
+  * a lockfile that cannot be read -- which must be exit 2, not "dead"
+  * an unreadable/missing lockfile must never be read as "package gone"
+
+Plus two things that keep the artefact honest: the register in docs/ must equal
+what the live osv-scanner.toml produces, and the version comparison must treat a
+prerelease as *not* patched.
+"""
+
+from __future__ import annotations
+
+import datetime as dt
+import json
+import sys
+from pathlib import Path
+
+import pytest
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+
+import check_suppressions as cs  # noqa: E402
+
+ROOT = Path(__file__).resolve().parents[1]
+
+
+# --- fixtures: a synthetic repo root ----------------------------------------
+
+
+def cargo_lock(*packages: tuple[str, str]) -> str:
+    blocks = [
+        "version = 4\n",
+        *[f'[[package]]\nname = "{n}"\nversion = "{v}"\n' for n, v in packages],
+    ]
+    return "\n".join(blocks)
+
+
+def npm_lock(*packages: tuple[str, str]) -> str:
+    return json.dumps(
+        {"lockfileVersion": 3, "packages": {
+            f"node_modules/{n}": {"version": v} for n, v in packages
+        }},
+        indent=2,
+    )
+
+
+def uv_lock(*packages: tuple[str, str]) -> str:
+    blocks = [
+        "version = 1\nrevision = 5\n",
+        *[f'[[package]]\nname = "{n}"\nversion = "{v}"\n' for n, v in packages],
+    ]
+    return "\n".join(blocks)
+
+
+def make_root(tmp_path: Path, *, config: str,
+              cargo: str | None = None, npm: str | None = None,
+              uv: str | None = None) -> Path:
+    (tmp_path / "osv-scanner.toml").write_text(config, encoding="utf-8")
+    if cargo is not None:
+        (tmp_path / "surfaces/gui/src-tauri").mkdir(parents=True, exist_ok=True)
+        (tmp_path / "surfaces/gui/src-tauri/Cargo.lock").write_text(cargo, encoding="utf-8")
+        (tmp_path / "stt").mkdir(parents=True, exist_ok=True)
+        (tmp_path / "stt/Cargo.lock").write_text(
+            'version = 4\n[[package]]\nname = "nothing-here"\nversion = "1.0.0"\n',
+            encoding="utf-8")
+    if npm is not None:
+        (tmp_path / "surfaces/gui").mkdir(parents=True, exist_ok=True)
+        (tmp_path / "surfaces/gui/package-lock.json").write_text(npm, encoding="utf-8")
+    if uv is not None:
+        (tmp_path / "uv.lock").write_text(uv, encoding="utf-8")
+    return tmp_path
+
+
+def run(root: Path, *extra: str) -> tuple[int, str]:
+    import io
+    from contextlib import redirect_stdout, redirect_stderr
+    buf = io.StringIO()
+    err = io.StringIO()
+    with redirect_stdout(buf), redirect_stderr(err):
+        code = cs.main(["--root", str(root), *extra])
+    return code, buf.getvalue() + err.getvalue()
+
+
+# --- the failure modes ------------------------------------------------------
+
+
+def test_package_absent_from_lockfiles_is_dead(tmp_path):
+    """5 unic-* rows were exactly this: the pin was gone, the entry lingered."""
+    make_root(
+        tmp_path,
+        config=(
+            '[[IgnoredVulns]]\nid = "RUSTSEC-2025-0075"\n'
+            'reason = "unic-char-range is not in the graph."\n'
+            "effectiveUntil = 2027-08-01\n"
+        ),
+        cargo=cargo_lock(("serde", "1.0.200")),
+    )
+    code, out = run(tmp_path, "--today", "2026-11-18")
+    assert code == 1, out
+    assert "DEAD" in out
+    assert "unic-char-range is in no crates.io lockfile" in out
+
+
+def test_package_pinned_past_fixed_version_is_dead(tmp_path):
+    """6 zip rows were this: pinned 9.6.0, advisory fixed >= 9.0.0."""
+    make_root(
+        tmp_path,
+        config=(
+            '[[IgnoredVulns]]\nid = "GHSA-q7v9-x93c-xqv3"\n'
+            'reason = "zip is not reachable."\n'
+            "effectiveUntil = 2027-08-01\n"
+        ),
+        cargo=cargo_lock(("zip", "9.6.0")),
+    )
+    code, out = run(tmp_path, "--today", "2026-11-18")
+    assert code == 1, out
+    assert "at or past the fixed version 9.0.0" in out
+
+
+def test_package_pinned_below_fixed_version_stays_alive(tmp_path):
+    """The mirror image: if the tree really were exposed, the entry is not dead."""
+    make_root(
+        tmp_path,
+        config=(
+            '[[IgnoredVulns]]\nid = "GHSA-q7v9-x93c-xqv3"\n'
+            'reason = "zip is not reachable."\n'
+            "effectiveUntil = 2027-08-01\n"
+        ),
+        cargo=cargo_lock(("zip", "8.2.0")),
+    )
+    code, out = run(tmp_path, "--today", "2026-11-18")
+    assert code == 0, out
+    assert "alive" in out.lower() or "Accepted" in out
+
+
+def test_prerelease_does_not_count_as_patched(tmp_path):
+    """`9.0.0-rc1` sorts before `9.0.0`; treating it as fixed would hide a real gap."""
+    make_root(
+        tmp_path,
+        config=(
+            '[[IgnoredVulns]]\nid = "GHSA-q7v9-x93c-xqv3"\n'
+            'reason = "x"\n'
+            "effectiveUntil = 2027-08-01\n"
+        ),
+        cargo=cargo_lock(("zip", "9.0.0-rc1")),
+    )
+    code, out = run(tmp_path, "--today", "2026-11-18")
+    assert code == 0, "a prerelease must not be judged patched\n" + out
+
+
+def test_unknown_advisory_id_is_unmapped(tmp_path):
+    """The 21st entry was a comment string; a real unknown id must be named too."""
+    make_root(
+        tmp_path,
+        config=(
+            '[[IgnoredVulns]]\nid = "RUSTSEC-2099-9999"\n'
+            'reason = "nobody remembers why this is here."\n'
+            "effectiveUntil = 2027-08-01\n"
+        ),
+        cargo=cargo_lock(("serde", "1.0.200")),
+    )
+    code, out = run(tmp_path, "--today", "2026-11-18")
+    assert code == 1, out
+    assert "UNMAPPED" in out
+    assert "RUSTSEC-2099-9999" in out
+
+
+def test_missing_lockfile_for_an_ecosystem_exits_2_not_dead(tmp_path):
+    """No Cargo.lock must not be read as 'the crate vanished' -- that would be a
+    false accusation against every entry, which is worse than no check."""
+    (tmp_path / "osv-scanner.toml").write_text(
+        '[[IgnoredVulns]]\nid = "RUSTSEC-2024-0370"\n'
+        'reason = "unmaintained."\neffectiveUntil = 2027-08-01\n',
+        encoding="utf-8")
+    # npm and uv exist; Cargo.lock deliberately does not.
+    (tmp_path / "surfaces/gui").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "surfaces/gui/package-lock.json").write_text(
+        npm_lock(("picomatch", "4.0.7")), encoding="utf-8")
+    (tmp_path / "uv.lock").write_text(uv_lock(("requests", "2.32.0")), encoding="utf-8")
+
+    code, out = run(tmp_path, "--today", "2026-11-18")
+    assert code == 2, out
+    assert "no crates.io lockfile" in out
+    assert "Refusing to judge" in out
+
+
+def test_unparseable_config_exits_2(tmp_path):
+    """osv-scanner rejects a bad file outright, so every acceptance is already
+    inactive; say that rather than reporting a clean scan."""
+    make_root(tmp_path, config='[[IgnoredVulns]\nid = "broken"\n',
+              cargo=cargo_lock(("serde", "1.0.200")))
+    code, out = run(tmp_path)
+    assert code == 2, out
+    assert "does not parse" in out
+
+
+def test_expiry_inside_window_warns_but_does_not_fail(tmp_path):
+    """glib lapses 2027-03-01; an acceptance still valid today must not red a push."""
+    make_root(
+        tmp_path,
+        config=(
+            '[[IgnoredVulns]]\nid = "GHSA-wrw7-89jp-8q8g"\n'
+            'reason = "gtk pins glib ^0.18."\n'
+            "effectiveUntil = 2027-03-01\n"
+        ),
+        cargo=cargo_lock(("glib", "0.18.5")),
+    )
+    # 30 days out: inside the 90-day window.
+    code, out = run(tmp_path, "--today", "2027-01-30")
+    assert code == 0, out
+    assert "::warning" in out
+    assert "lapses 2027-03-01" in out
+
+
+def test_expiry_beyond_window_is_quiet(tmp_path):
+    make_root(
+        tmp_path,
+        config=(
+            '[[IgnoredVulns]]\nid = "GHSA-wrw7-89jp-8q8g"\n'
+            'reason = "gtk pins glib ^0.18."\n'
+            "effectiveUntil = 2027-03-01\n"
+        ),
+        cargo=cargo_lock(("glib", "0.18.5")),
+    )
+    code, out = run(tmp_path, "--today", "2026-06-01")
+    assert code == 0, out
+    assert "::warning" not in out
+
+
+def test_ignoreUntil_is_honoured_as_the_old_spelling(tmp_path):
+    """CONTRIBUTING still allows the deprecated key; the checker must read it."""
+    make_root(
+        tmp_path,
+        config=(
+            '[[IgnoredVulns]]\nid = "GHSA-wrw7-89jp-8q8g"\n'
+            'reason = "gtk pins glib ^0.18."\n'
+            "ignoreUntil = 2027-03-01\n"
+        ),
+        cargo=cargo_lock(("glib", "0.18.5")),
+    )
+    code, out = run(tmp_path, "--today", "2027-01-30")
+    assert code == 0, out
+    assert "lapses 2027-03-01" in out
+
+
+# --- the version comparison itself ------------------------------------------
+
+
+@pytest.mark.parametrize("raw, expected", [
+    ("9.6.0", (9, 6)),
+    ("0.20.0", (0, 20)),
+    ("1.0", (1,)),
+    ("1.0.0.0", (1,)),
+    ("2.0.0-rc1", (2,)),
+])
+def test_version_parse(raw, expected):
+    assert cs.Version.parse(raw).release == expected
+
+
+def test_version_ordering():
+    p = cs.Version.parse
+    assert p("9.0.0-rc1") < p("9.0.0")
+    assert p("9.0.0") < p("9.6.0")
+    assert p("0.18.5") < p("0.20.0")
+    assert not (p("9.6.0") < p("9.0.0"))
+
+
+# --- the artefact must not drift from the config ----------------------------
+
+
+def test_register_matches_live_config():
+    """docs/dependency-risk-register.md is generated; a hand edit that diverges
+    from osv-scanner.toml would mislead the next reader, so refuse it."""
+    register = ROOT / "docs" / "dependency-risk-register.md"
+    if not register.exists():
+        pytest.skip("register not generated yet")
+
+    entries = cs.parse_entries((ROOT / "osv-scanner.toml").read_text(encoding="utf-8"))
+    # Regenerate at a fixed date so the test is not time-dependent.
+    fixed = dt.date(2026, 11, 18)
+    expected = cs.render_markdown(
+        cs.audit(entries, {
+            eco: cs.load_pins(ROOT, eco)[0] for eco in {m["ecosystem"] for m in cs.ADVISORIES.values()}
+        }, fixed),
+        fixed,
+    )
+    actual = register.read_text(encoding="utf-8")
+    assert actual.strip() == expected.strip(), (
+        "docs/dependency-risk-register.md is stale -- regenerate with:\n"
+        "  python scripts/check_suppressions.py --markdown docs/dependency-risk-register.md"
+    )
+
+
+def test_every_live_entry_is_mapped():
+    """A new entry added without an ADVISORIES row would show up as UNMAPPED in
+    CI; assert it here too so the failure is local and legible."""
+    entries = cs.parse_entries((ROOT / "osv-scanner.toml").read_text(encoding="utf-8"))
+    for entry in entries:
+        vid = str(entry.get("id") or "")
+        assert vid.lower() in cs.ADVISORIES, (
+            f"{vid} has no entry in scripts/check_suppressions.py ADVISORIES -- "
+            "add the package it belongs to, or drop the suppression"
+        )
+
+
+def test_live_repo_is_clean():
+    """The real tree must pass: 7 entries, all alive, exit 0."""
+    code, out = run(ROOT, "--today", "2026-11-18")
+    assert code == 0, out
+    assert "7 suppression(s)" in out
+    assert "0 dead" in out
+    assert "0 unmapped" in out

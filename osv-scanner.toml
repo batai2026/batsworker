@@ -79,6 +79,31 @@
 #
 # The 7 that remain are all "no fixed version exists" (5 unmaintained notices and
 # 2 crates whose fix is not published yet) — not "too expensive to fix".
+#
+# HOW THE ROT WAS FOUND, AND HOW IT WILL BE FOUND NEXT TIME. This pass was manual:
+# read every advisory file, resolve every pin, delete what had gone dead. That is
+# not repeatable on a schedule, so it is now a check:
+#
+#     python scripts/check_suppressions.py            # fails on dead/unmapped rows
+#     python scripts/check_suppressions.py --markdown \
+#         docs/dependency-risk-register.md            # due dates, soonest first
+#
+# It runs in .github/workflows/dependency-audit.yml on every push and PR, and in
+# tests/test_suppressions.py. Two things it enforces that osv-scanner cannot:
+#   * a row whose package is absent from every lockfile, or pinned AT/PAST the
+#     advisory's fixed version, is DEAD — it suppresses nothing and covers any
+#     future finding for that crate. All 13 rows removed above were dead this way,
+#     and the scanner reported none of them, because each id still existed.
+#   * a row whose id maps to no package is UNMAPPED. (The 2026-11-18 task counted
+#     21 entries when there were 20 for exactly this kind of reason: one "match"
+#     was the literal [[IgnoredVulns]] string in a comment above.)
+#
+# The id -> package map is in scripts/check_suppressions.py, NOT here, and that is
+# forced rather than chosen: osv-scanner 2.7.1 rejects unknown keys, so adding
+# `package = "..."` to an entry below makes the loader refuse the whole file
+# ("unknown keys in config file: IgnoredVulns.package", exit 127) and every
+# acceptance silently stops applying. Verified against 2.7.1 on 2026-11-18.
+# Consequence: a NEW entry here needs a matching row in that map, or CI fails.
 # ---------------------------------------------------------------------------
 
 # --- not compiled into any released artefact ---
