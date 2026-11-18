@@ -4,17 +4,17 @@
      regenerate after changing osv-scanner.toml. A test compares this file with
      the live config, so a stale table fails CI rather than misleads a reader. -->
 
-Every entry in `osv-scanner.toml` is debt with a due date. When an `effectiveUntil` passes, osv-scanner stops honouring the acceptance and the finding returns to CI — there is no silent ageing. This table exists so the next one can be seen coming. Snapshot: **2026-11-18**.
+Every entry in `osv-scanner.toml` is debt with a due date. When an `effectiveUntil` passes, osv-scanner stops honouring the acceptance and the finding returns to CI — there is no silent ageing. This table exists so the next one can be seen coming. Run `python scripts/check_suppressions.py` for the live countdown; this file records only what does not change daily.
 
-| due | days left | advisory | package | why it cannot be fixed |
-|---|---|---|---|---|
-| 2027-03-01 | 103 | `GHSA-wrw7-89jp-8q8g` | `glib` | glib VariantStrIter unsoundness, patched only at glib >= 0.20.0 |
-| 2027-08-01 | 256 | `RUSTSEC-2024-0370` | `proc-macro-error` | proc-macro-error 1.0.4 is unmaintained |
-| 2027-08-01 | 256 | `RUSTSEC-2026-0543` | `chrono` | chrono is unmaintained; every version is affected and no fixed version exists |
-| 2027-08-01 | 256 | `RUSTSEC-2026-0370` | `zvariant` | zvariant 5.12.0 is unmaintained |
-| 2027-08-01 | 256 | `RUSTSEC-2026-0371` | `zbus_names` | zbus_names 4.3.2 is unmaintained |
-| 2027-08-01 | 256 | `RUSTSEC-2026-0372` | `zvariant_derive` | zvariant_derive 5.12.0 is unmaintained |
-| 2027-08-01 | 256 | `GHSA-fc5q-39xc-vjpf` | `picomatch` | picomatch ReDoS through single-branch repeated extglobs |
+| due | advisory | package | why it cannot be fixed |
+|---|---|---|---|
+| 2027-03-01 | `GHSA-wrw7-89jp-8q8g` | `glib` | glib VariantStrIter unsoundness, patched only at glib >= 0.20.0 |
+| 2027-08-01 | `RUSTSEC-2024-0370` | `proc-macro-error` | proc-macro-error 1.0.4 is unmaintained |
+| 2027-08-01 | `RUSTSEC-2026-0543` | `chrono` | chrono is unmaintained; every version is affected and no fixed version exists |
+| 2027-08-01 | `RUSTSEC-2026-0370` | `zvariant` | zvariant 5.12.0 is unmaintained |
+| 2027-08-01 | `RUSTSEC-2026-0371` | `zbus_names` | zbus_names 4.3.2 is unmaintained |
+| 2027-08-01 | `RUSTSEC-2026-0372` | `zvariant_derive` | zvariant_derive 5.12.0 is unmaintained |
+| 2027-08-01 | `GHSA-fc5q-39xc-vjpf` | `picomatch` | picomatch ReDoS through single-branch repeated extglobs |
 
 ## Rotation
 

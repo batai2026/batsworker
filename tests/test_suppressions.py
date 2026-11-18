@@ -284,19 +284,52 @@ def test_register_matches_live_config():
         pytest.skip("register not generated yet")
 
     entries = cs.parse_entries((ROOT / "osv-scanner.toml").read_text(encoding="utf-8"))
-    # Regenerate at a fixed date so the test is not time-dependent.
-    fixed = dt.date(2026, 11, 18)
-    expected = cs.render_markdown(
-        cs.audit(entries, {
-            eco: cs.load_pins(ROOT, eco)[0] for eco in {m["ecosystem"] for m in cs.ADVISORIES.values()}
-        }, fixed),
-        fixed,
-    )
+    pins = {eco: cs.load_pins(ROOT, eco)[0]
+            for eco in {m["ecosystem"] for m in cs.ADVISORIES.values()}}
+    expected = cs.render_markdown(cs.audit(entries, pins, dt.date(2026, 11, 18)),
+                                  dt.date(2026, 11, 18))
     actual = register.read_text(encoding="utf-8")
     assert actual.strip() == expected.strip(), (
         "docs/dependency-risk-register.md is stale -- regenerate with:\n"
         "  python scripts/check_suppressions.py --markdown docs/dependency-risk-register.md"
     )
+
+
+def test_register_does_not_change_with_the_calendar():
+    """The register must be identical whichever day it is generated on.
+
+    An earlier version stamped the snapshot date and a "days left" column into the
+    file while this test compared against a PINNED date. The two could only agree
+    on one day: from the next midnight the drift guard went red, and following the
+    regeneration command in its own error message produced a file that could never
+    match again. A committed countdown is a number that is wrong by tomorrow --
+    the live countdown belongs in stdout. This test is the tripwire.
+    """
+    entries = cs.parse_entries((ROOT / "osv-scanner.toml").read_text(encoding="utf-8"))
+    pins = {eco: cs.load_pins(ROOT, eco)[0]
+            for eco in {m["ecosystem"] for m in cs.ADVISORIES.values()}}
+    renders = {}
+    for day in (dt.date(2026, 11, 18), dt.date(2026, 11, 19),
+                dt.date(2027, 1, 15), dt.date(2030, 6, 30)):
+        renders[day] = cs.render_markdown(cs.audit(entries, pins, day), day)
+    distinct = set(renders.values())
+    assert len(distinct) == 1, (
+        "the generated register varies with the date -- remove the snapshot date "
+        "and the days-left column from render_markdown:\n"
+        + "\n\n".join(sorted(distinct))[:800]
+    )
+
+
+def test_register_has_no_volatile_columns():
+    """A committed 'days left' column can only ever be right on one day."""
+    entries = cs.parse_entries((ROOT / "osv-scanner.toml").read_text(encoding="utf-8"))
+    pins = {eco: cs.load_pins(ROOT, eco)[0]
+            for eco in {m["ecosystem"] for m in cs.ADVISORIES.values()}}
+    text = cs.render_markdown(cs.audit(entries, pins, dt.date(2026, 11, 18)),
+                              dt.date(2026, 11, 18))
+    header = next(ln for ln in text.splitlines() if ln.startswith("| due"))
+    assert "days left" not in header.lower(), header
+    assert "Snapshot" not in text, "the snapshot date must not enter the file"
 
 
 def test_every_live_entry_is_mapped():
