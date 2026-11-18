@@ -19,6 +19,10 @@ from coworker.security import SecurityStore
 from coworker.server import SessionManager, create_app
 from coworker.tools.security import security_tools
 
+# tests/ has no __init__.py, so test modules are imported as top-level modules and this
+# must be an absolute import from the tests dir (pytest inserts it into sys.path).
+import _shell_timeout  # noqa: E402
+
 
 class _StubProvider(ProviderClient):
     def complete(self, **kwargs):  # pragma: no cover
@@ -198,7 +202,7 @@ def test_docker_executor_per_command_fallback(tmp_path, monkeypatch):
     monkeypatch.setattr(_sp, "run", _no_docker)
 
     ex = DockerExecutor(workspace=tmp_path)
-    res = ex.run("echo sandbox-fallback-ok", timeout=5)
+    res = _shell_timeout.run_real_shell(ex.run, "echo sandbox-fallback-ok")
     assert res["sandboxed"] is False
     assert "Docker" in res.get("fallback_reason", "")
     assert "sandbox-fallback-ok" in res.get("output", "")

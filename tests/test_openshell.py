@@ -19,6 +19,10 @@ from coworker.tools.openshell import (
     expand_prefix,
 )
 
+# tests/ has no __init__.py, so test modules are imported as top-level modules and this
+# must be an absolute import from the tests dir (pytest inserts it into sys.path).
+import _shell_timeout  # noqa: E402
+
 
 def _fake_cli(calls: list, *, create_rc: int = 0):
     """subprocess.run stand-in that understands the OpenShell sandbox CLI."""
@@ -98,7 +102,7 @@ def test_openshell_falls_back_when_cli_missing(tmp_path, monkeypatch):
     monkeypatch.setattr(oshell.shutil, "which", lambda name: None)
 
     ex = OpenShellExecutor(workspace=tmp_path)
-    res = ex.run("echo sandbox-fallback-ok", timeout=5)
+    res = _shell_timeout.run_real_shell(ex.run, "echo sandbox-fallback-ok")
     assert res["sandboxed"] is False
     assert "OpenShell CLI not found" in res.get("fallback_reason", "")
     assert "sandbox-fallback-ok" in res.get("output", "")
@@ -180,12 +184,14 @@ def test_openshell_create_failure_falls_back(tmp_path, monkeypatch):
     monkeypatch.setattr(_sp, "run", _fake_cli([], create_rc=1))
 
     ex = OpenShellExecutor(workspace=tmp_path)
-    res = ex.run("echo create-fallback", timeout=5)
+    res = _shell_timeout.run_real_shell(ex.run, "echo create-fallback")
     assert res["sandboxed"] is False
     assert "create failed" in res.get("fallback_reason", "")
     assert "create-fallback" in res.get("output", "")
     # Create failure is sticky for the session (no retry storm per command).
-    assert ex.run("echo again", timeout=5)["sandboxed"] is False
+    assert ex.run("echo again", timeout=_shell_timeout.REAL_SHELL_TIMEOUT)[
+        "sandboxed"
+    ] is False
 
 
 def test_openshell_per_command_fallback_on_cli_loss(tmp_path, monkeypatch):
@@ -197,7 +203,7 @@ def test_openshell_per_command_fallback_on_cli_loss(tmp_path, monkeypatch):
     ex = OpenShellExecutor(workspace=tmp_path)
     # First run falls back (probe fails). A real session could also see the CLI
     # vanish mid-flight; FileNotFoundError in run() triggers the same path.
-    res = ex.run("echo gone", timeout=5)
+    res = _shell_timeout.run_real_shell(ex.run, "echo gone")
     assert res["sandboxed"] is False
     assert "OpenShell" in res.get("fallback_reason", "")
 
