@@ -394,10 +394,18 @@ def render_markdown(reports: list[EntryReport], today: dt.date) -> str:
 
     Kept as a generated artefact so it cannot disagree with the config -- a test
     asserts this file equals what the current osv-scanner.toml produces.
+
+    `today` is used ONLY to order rows (soonest deadline first) and is
+    deliberately absent from the output. An earlier version stamped the snapshot
+    date and a "days left" column into the text, which made the file change every
+    midnight and left the drift test permanently red -- the test pins a fixed
+    date, so no regeneration could ever match it again. The countdown belongs in
+    the daily stdout run, not in a committed file: a committed number is a number
+    that is wrong by tomorrow.
     """
     alive = sorted(
         (r for r in reports if r.package),
-        key=lambda r: (r.days_left is None, r.days_left if r.days_left is not None else 0),
+        key=lambda r: (r.effective_until == "", r.effective_until),
     )
     lines = [
         "# Accepted dependency risk \u2014 register and due dates",
@@ -406,22 +414,19 @@ def render_markdown(reports: list[EntryReport], today: dt.date) -> str:
         "     regenerate after changing osv-scanner.toml. A test compares this file with",
         "     the live config, so a stale table fails CI rather than misleads a reader. -->",
         "",
-        f"Every entry in `osv-scanner.toml` is debt with a due date. When an "
-        f"`effectiveUntil` passes, osv-scanner stops honouring the acceptance and the "
-        f"finding returns to CI \u2014 there is no silent ageing. This table exists so the "
-        f"next one can be seen coming. Snapshot: **{today.isoformat()}**.",
+        "Every entry in `osv-scanner.toml` is debt with a due date. When an "
+        "`effectiveUntil` passes, osv-scanner stops honouring the acceptance and the "
+        "finding returns to CI \u2014 there is no silent ageing. This table exists so the "
+        "next one can be seen coming. Run `python scripts/check_suppressions.py` for "
+        "the live countdown; this file records only what does not change daily.",
         "",
-        "| due | days left | advisory | package | why it cannot be fixed |",
-        "|---|---|---|---|---|",
+        "| due | advisory | package | why it cannot be fixed |",
+        "|---|---|---|---|",
     ]
     for report in alive:
-        if report.days_left is None:
-            due, left = "no date", "\u2014"
-        else:
-            due = report.effective_until
-            left = f"**{report.days_left}**" if report.near_expiry else str(report.days_left)
+        due = report.effective_until if report.effective_until else "no date"
         lines.append(
-            f"| {due} | {left} | `{report.id}` | `{report.package}` | {report.why_not_fixed} |"
+            f"| {due} | `{report.id}` | `{report.package}` | {report.why_not_fixed} |"
         )
     lines += [
         "",

@@ -44,6 +44,25 @@ where this fork's own release line starts.
   the "20 entries" overstated the accepted count: it is 18 distinct advisories.
   Verified by removing each entry in turn — the scanner re-reports exactly that
   advisory and nothing else.
+- Dead acceptances are now caught in CI rather than by hand. `scripts/check_suppressions.py`
+  reports every entry as alive, dead (the package is absent or already pinned past
+  the advisory's fixed version) or unmapped (no id-to-package row exists), and
+  exits non-zero on the latter two. It runs as the `suppression-register` job and
+  is a required check on `main`.
+- The expiry calendar lives in `docs/dependency-risk-register.md` and is generated
+  from the config, so it cannot drift from it. A test compares the committed file
+  with what `osv-scanner.toml` currently produces.
+
+### Fixed — dependency and supply-chain work
+
+- The generated register stamped the snapshot date and a "days left" column into
+  the committed file while its drift test compared against a pinned date. The two
+  could only agree on the day the file was written: from the next midnight the
+  guard failed, and following the regeneration command in its own error message
+  produced a file that could never match again. The generator now emits only what
+  does not change daily (due date, advisory, package, justification); the live
+  countdown stays in the checker's stdout, and two tests refuse the volatile
+  shape if it comes back.
 
 ## [1.0.5] — 2026-11-09
 
