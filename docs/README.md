@@ -68,6 +68,12 @@ New to the codebase? Read in roughly this order:
 | [egress-and-openshell.md](design/egress-and-openshell.md) | Egress policy server + OpenShell sandbox executor + container image (v0.3.1 alignment) |
 | [maturity-assessment-2026-11-08.md](maturity-assessment-2026-11-08.md) | 项目成熟度评估报告（2026-11-08）：0.93/1.0，已完成项清单 + 剩余缺口 + 归档记录 |
 
+## Repository process
+
+| Doc | What it covers |
+|---|---|
+| [branch-protection.md](branch-protection.md) | What gates a merge on `main`: the 12 required checks, why push-only jobs are excluded, `strict` tradeoff, and how to change it safely |
+
 ## Related material elsewhere in the repo
 
 - `reports/` — reviewer-model evaluation reports (Auto-Approve persona comparisons).
