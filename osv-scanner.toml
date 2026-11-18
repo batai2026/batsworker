@@ -30,158 +30,75 @@
 # osv-scanner.toml does not propagate into subdirectories, and our lockfiles
 # live in surfaces/gui/ and stt/.
 #
-# Audit that produced this list: 2026-11-08 (94 unique advisories over 4 lockfile
-# sources). Re-measured 2026-11-09 against the tree with every fix applied: 18
-# distinct advisories remained, and they are the 18 entries below.
-#
-# Counting note: this file previously held 20 entries for those 18 advisories —
-# GHSA-q7v9-x93c-xqv3 also appeared as RUSTSEC-2026-0429, and
-# GHSA-wrw7-89jp-8q8g also appeared as RUSTSEC-2024-0429. Since suppression
-# expands through aliases, each duplicate silenced an advisory that an earlier
-# entry already covered, and osv-scanner flagged both as "unused ignores".
-# They were removed on 2026-11-16 after verifying the remaining 18 still suppress
-# every record the lockfiles produce.
-#
-# The other 74 are absent because they were FIXED, not suppressed (all on
-# 2026-11-09, each suite green):
-#   * 35 PyPI - pypdf 18 and certifi 2 are reachable and were closed by raising the
-#     floors in requirements.txt; pip 10, pyasn1 4 and opentelemetry-api 1 are
-#     dev-only and never enter an installer.
-#   * 25 npm - 23 dev-toolchain advisories (vite, vitest, @vitest/mocker, tinypool,
-#     esbuild, postcss, postcss-selector-parser, browserslist, nanoid,
-#     source-map-js, baseline-browser-mapping) went into the tooling bump, and 2
-#     reachable xlsx advisories were closed by replacing SheetJS with exceljs.
-#     exceljs's own uuid arrived flagged (GHSA-w5hq-g745-h8pq) and is lifted to
-#     11.1.1 by the `overrides` block in surfaces/gui/package.json, so it never
-#     reaches this file either.
-#   * 14 crates.io - the rustls/webpki TLS stack 11 (reachable), plus tokio, anyhow
-#     and event-listener 3 that fell out of the same Rust bump.
-#
-# The 18 entries below are what cannot be fixed by a version bump today. None of
-# them is reachable from this codebase: each is an unmaintained-crate notice, an
-# advisory in a crate pulled in only by such a crate, or the zip 4.x family behind
-# tauri-plugin-updater's minisign check.
-#
-# Two entries are NOT covered by that sentence and are tracked as debt rather than
-# settled: RUSTSEC-2026-0194 and RUSTSEC-2026-0195 (quick-xml). Both have a
-# released fix (0.41.0), so the policy above says they should be upgraded, not
-# accepted. They stay here only because the bump is a breaking 0.x change INSIDE
-# Tauri's own dependency tree. That is a cost calculation, not the "unfixable"
-# claim the policy asks for, and the reasons below say so explicitly.
-#
 # ---------------------------------------------------------------------------
-# zip 4.x — major bump (9.0.5) owned by tauri-plugin-updater, not by us.
+# AUDIT 2026-11-18 (second pass) — 20 entries in, 7 out. 13 deleted.
+#
+# The previous header claimed "18 entries ... cannot be fixed by a version bump"
+# and "none of them is reachable from this codebase". Both were wrong. This pass
+# re-derived every row from the RustSec advisory files and the versions the two
+# lockfiles actually pin (surfaces/gui/src-tauri/Cargo.lock, stt/Cargo.lock):
+# 13 of the 20 were suppressing nothing and are deleted.
+#
+#   * 6 zip rows (GHSA-m665-v7pm-7grj, GHSA-q7v9-x93c-xqv3, GHSA-8hxf-qr8p-62x4,
+#     RUSTSEC-2026-0367/0368/0369). Each said "the fix needs zip 9.x, a major owned
+#     by the plugin". The plugin moved: tauri-plugin-updater 2.14.1 enables its
+#     `zip` feature and the lock pins zip 9.6.0, at or past `patched >= 9.0.0`
+#     (and >= 9.0.5 for m665). They described a state that no longer exists.
+#     NOTE this one IS a live code path — the updater decompresses update packages
+#     on Windows (`zip` edge is target=cfg(target_os="windows")) — it is just
+#     already fixed. Deleting the suppression is what makes CI say so.
+#   * 5 unic-* rows (RUSTSEC-2025-0075/0080/0081/0098/0100). Each said "transitive
+#     via idna". idna is 1.1.0 now and no longer pulls them: `unic-` occurs zero
+#     times in either lockfile, the Windows resolve graph has none of the five, and
+#     `cargo tree -i unic-char-range` fails with "did not match any packages".
+#     The `.fingerprint` dirs for them are leftovers from 2026-11-14, before the
+#     bump — stale build output, not evidence they still build.
+#   * 2 quick-xml rows (RUSTSEC-2026-0194/0195). These were the only ones this
+#     file's policy condemned outright. They said a fix meant "a breaking 0.x bump
+#     inside Tauri's tree"; in fact quick-xml's ONLY parent is plist, and plist
+#     1.10.4 requires quick-xml ^0.42.0. Bumping plist 1.9.0 -> 1.10.4 (PR #48)
+#     moves quick-xml 0.39.4 -> 0.42.0, past `patched >= 0.41.0`. THIS DELETE IS
+#     ONLY TRUE ONCE #48 IS ON main — if #48 is reverted, these two must come back.
+#
+# HOW "compiled" WAS DETERMINED. The resolve graph in `cargo metadata` lists
+# optional edges that were never enabled, so it cannot answer "does this ship".
+# Build artefacts can: cargo writes a fingerprint dir and an rlib per crate it
+# compiles. Filtering the graph to the platform we ship
+# (`--filter-platform x86_64-pc-windows-msvc`, 320 packages) and checking
+# target/debug/.fingerprint: plist, quick-xml, zip, serde_with, idna and
+# tauri-plugin-updater are COMPILED; chrono, glib, gtk, zbus, zvariant,
+# zbus_names, zvariant_derive and proc-macro-error have no fingerprint and no
+# rlib. chrono is listed as a package only because serde_with declares it
+# optionally; serde_with's enabled features here are {alloc, default, macros,
+# std}, with no chrono_0_4.
+#
+# PLATFORMS WE SHIP. .github/workflows/release.yml builds macos-latest,
+# macos-15-intel and windows-latest. There is no Linux artefact. So a crate that
+# only exists behind Tauri's GTK/D-Bus layer is never linked into anything a user
+# installs, even though the Linux CI job does compile it.
+#
+# The 7 that remain are all "no fixed version exists" (5 unmaintained notices and
+# 2 crates whose fix is not published yet) — not "too expensive to fix".
 # ---------------------------------------------------------------------------
-# The only consumer is tauri-plugin-updater, which unpacks an update archive
-# only AFTER minisign signature verification. Every one of these advisories
-# needs a crafted ZIP to reach the extraction code, i.e. it needs the update
-# signing key. Revisit when tauri-plugin-updater adopts zip 9.
 
-[[IgnoredVulns]]
-id = "GHSA-m665-v7pm-7grj"
-effectiveUntil = 2027-03-01
-reason = "zip 4.x dual-header parser differential. Only extraction path in this repo is tauri-plugin-updater, which unpacks signed update archives after minisign verification. Fix requires zip 9.x, a major owned by the plugin."
-
-[[IgnoredVulns]]
-id = "GHSA-q7v9-x93c-xqv3"
-effectiveUntil = 2027-03-01
-reason = "zip symlink-target handling. Same upstream constraint: only reachable via the signed update archive, fix is major zip 9.0.0."
-
-[[IgnoredVulns]]
-id = "GHSA-8hxf-qr8p-62x4"
-effectiveUntil = 2027-03-01
-reason = "zip AES HMAC bypass on premature EOF. Signed-archive-only path; fix is major zip 9.0.0."
-
-[[IgnoredVulns]]
-id = "RUSTSEC-2026-0367"
-effectiveUntil = 2027-03-01
-reason = "zip SUID/SGID preservation during extraction. Update archives are signed; fix is major zip 9.0.0."
-
-[[IgnoredVulns]]
-id = "RUSTSEC-2026-0368"
-effectiveUntil = 2027-03-01
-reason = "zip symlink escape during ZipArchive::extract. Signed-update-only path; fix is major zip 9.0.0."
-
-[[IgnoredVulns]]
-id = "RUSTSEC-2026-0369"
-effectiveUntil = 2027-03-01
-reason = "zip applies Unix permissions through symlinks without confining the target. Signed-update-only path; fix is major zip 9.0.0."
-
-# ---------------------------------------------------------------------------
-# Tauri's own dependency tree — fixes require a Tauri/GTK major bump.
-# ---------------------------------------------------------------------------
-# Neither crate parses request or file input in this app: quick-xml is reached
-# through Tauri's own metadata handling, glib through Tauri's Linux GTK layer.
-# Their DoS classes need attacker-chosen XML/GTK input that never enters here.
-
-[[IgnoredVulns]]
-id = "RUSTSEC-2026-0194"
-effectiveUntil = 2027-03-01
-reason = "quick-xml quadratic time on duplicate attributes. Reachable only via Tauri's own plist/metadata parsing, not from app input. A fix EXISTS (0.41.0) but is a breaking 0.x bump inside Tauri's tree: accepting a DoS to avoid forcing a Tauri major, not unfixable."
-
-[[IgnoredVulns]]
-id = "RUSTSEC-2026-0195"
-effectiveUntil = 2027-03-01
-reason = "quick-xml unbounded namespace allocation in NsReader. Same Tauri-internal-only path. A fix EXISTS but is a breaking 0.x bump inside Tauri's tree: accepting a DoS, not declaring it unfixable."
+# --- not compiled into any released artefact ---
 
 [[IgnoredVulns]]
 id = "GHSA-wrw7-89jp-8q8g"
+# RUSTSEC-2024-0429. Kept: there is no version of this to upgrade to.
+# glib 0.18.5 is what gtk 0.18.2 requires (^0.18); the advisory is patched at
+# >= 0.20.0. gtk 0.19.0 already wants glib ^0.22, but tauri 2.12.5 — and even
+# the newest published tauri, 2.12.6 — still declares gtk ^0.18, so the gtk-rs
+# move has to happen upstream first. Reached only through Tauri's GTK layer, and
+# release.yml ships macOS + Windows only, so it is in no released binary.
+# The unsoundness is VariantStrIter; nothing in this codebase constructs one.
 effectiveUntil = 2027-03-01
-reason = "glib VariantStrIter unsoundness. glib is Tauri's Linux GTK binding; this codebase never constructs a VariantStrIter. Fix is a breaking 0.18 -> 0.20 bump owned by Tauri."
-
-# ---------------------------------------------------------------------------
-# Unmaintained crates (RUSTSEC informational; no vulnerability, no fix).
-# ---------------------------------------------------------------------------
-# These carry no exploit: the advisory says the crate is no longer maintained.
-# They ride in transitively (idna for the unic-* set, Tauri/zbus for the
-# zvariant set, a build-time proc-macro for proc-macro-error), so the only fix
-# is an upstream dependency swap. Reviewed again at the date below; drop the
-# entries whose parents have moved on by then.
+reason = "glib VariantStrIter unsoundness, patched only at glib >= 0.20.0. gtk 0.18.2 pins glib ^0.18 and tauri still requires gtk ^0.18 (checked tauri 2.12.6, the newest published release), so no legal upgrade exists from here — the fix is gtk-rs releasing a tauri-consumable gtk 0.19+. Linux GTK layer only; release.yml builds macOS arm64/x64 and Windows, so it is not in any shipped artefact, and this codebase never constructs a VariantStrIter."
 
 [[IgnoredVulns]]
 id = "RUSTSEC-2024-0370"
 effectiveUntil = 2027-08-01
-reason = "proc-macro-error is unmaintained — build-time only, no runtime code path. Removal requires upstream build deps to migrate."
-
-[[IgnoredVulns]]
-id = "RUSTSEC-2025-0075"
-effectiveUntil = 2027-08-01
-reason = "unic-char-range is unmaintained — transitive via idna. Informational only; no vulnerability."
-
-[[IgnoredVulns]]
-id = "RUSTSEC-2025-0080"
-effectiveUntil = 2027-08-01
-reason = "unic-common is unmaintained — transitive via idna. Informational only; no vulnerability."
-
-[[IgnoredVulns]]
-id = "RUSTSEC-2025-0081"
-effectiveUntil = 2027-08-01
-reason = "unic-char-property is unmaintained — transitive via idna. Informational only; no vulnerability."
-
-[[IgnoredVulns]]
-id = "RUSTSEC-2025-0098"
-effectiveUntil = 2027-08-01
-reason = "unic-ucd-version is unmaintained — transitive via idna. Informational only; no vulnerability."
-
-[[IgnoredVulns]]
-id = "RUSTSEC-2025-0100"
-effectiveUntil = 2027-08-01
-reason = "unic-ucd-ident is unmaintained — transitive via idna. Informational only; no vulnerability."
-
-[[IgnoredVulns]]
-id = "RUSTSEC-2026-0370"
-effectiveUntil = 2027-08-01
-reason = "zvariant is unmaintained — Linux D-Bus helper pulled by Tauri. Informational only; no vulnerability."
-
-[[IgnoredVulns]]
-id = "RUSTSEC-2026-0371"
-effectiveUntil = 2027-08-01
-reason = "zbus_names is unmaintained — Linux D-Bus helper pulled by Tauri. Informational only; no vulnerability."
-
-[[IgnoredVulns]]
-id = "RUSTSEC-2026-0372"
-effectiveUntil = 2027-08-01
-reason = "zvariant_derive is unmaintained — proc-macro sibling of zvariant, pulled by Tauri. Informational only."
+reason = "proc-macro-error 1.0.4 is unmaintained. Build-time only and not built for Windows: its only edges are glib-macros 0.18.5 and gtk3-macros 0.18.2, both behind Tauri's Linux GTK layer, and neither is in the windows fingerprint set. No fixed version exists; removal requires gtk-rs to drop it."
 
 [[IgnoredVulns]]
 id = "RUSTSEC-2026-0543"
@@ -190,7 +107,26 @@ id = "RUSTSEC-2026-0543"
 # chrono 0.4.45 at the last green run, so this is an advisory-database change, not a
 # dependency change: nothing in this PR touches a version.
 effectiveUntil = 2027-08-01
-reason = "chrono is unmaintained; all versions are affected and no fixed version exists. Not compiled here: the sole edge into chrono is serde_with 3.21.0, where chrono is an OPTIONAL dependency behind the `chrono_0_4` feature (dep:chrono_0_4), and tauri-utils declares serde_with = { version = \"3\" } with no features, so serde_with's default (std, macros) never activates it — std mentions chrono only as `chrono_0_4?/clock`, the ? form that is a no-op while the dependency is off. It sits in Cargo.lock, contributes nothing to the binary, and this repo never calls chrono directly. Drop the entry when Tauri's own serde_with usage stops naming chrono, or at the deadline."
+reason = "chrono is unmaintained; every version is affected and no fixed version exists. Not compiled: the only declared edge is serde_with 3.21.0, where chrono is an OPTIONAL dependency behind the chrono_0_4 feature. Checked 2026-11-18 against build artefacts, not manifests: serde_with resolves to {alloc, default, macros, std} with no chrono_0_4, and target/debug has no chrono fingerprint and no libchrono rlib. It is in Cargo.lock; it is not in the binary."
+
+# --- compiled on Linux only (Tauri's GTK/D-Bus layer), not in a released artefact ---
+
+[[IgnoredVulns]]
+id = "RUSTSEC-2026-0370"
+effectiveUntil = 2027-08-01
+reason = "zvariant 5.12.0 is unmaintained. Reached only through Tauri's Linux D-Bus layer (zbus 5.16.0); no zbus/zvariant fingerprint exists in the windows build, and release.yml ships macOS + Windows only, so it is in no released artefact. The advisory reports no vulnerability and no fixed version exists — the fix is zbus migrating off it."
+
+[[IgnoredVulns]]
+id = "RUSTSEC-2026-0371"
+effectiveUntil = 2027-08-01
+reason = "zbus_names 4.3.2 is unmaintained. Same Linux-only zbus path as RUSTSEC-2026-0370 and the same nature: not compiled for Windows, not in any released artefact, no vulnerability, no fixed version. Fix is upstream in zbus."
+
+[[IgnoredVulns]]
+id = "RUSTSEC-2026-0372"
+effectiveUntil = 2027-08-01
+reason = "zvariant_derive 5.12.0 is unmaintained. Proc-macro sibling of zvariant, pulled by zvariant on the Linux D-Bus path; not in the windows build and not in any released artefact. No vulnerability and no fixed version. Fix is upstream in zbus/zvariant."
+
+# --- dev toolchain only (never in the bundle) ---
 
 [[IgnoredVulns]]
 id = "GHSA-fc5q-39xc-vjpf"
@@ -200,4 +136,4 @@ id = "GHSA-fc5q-39xc-vjpf"
 # between the last green audit (15:23) and the red one (16:05), so this is an
 # advisory-database change: no dependency moved.
 effectiveUntil = 2027-08-01
-reason = "picomatch ReDoS through single-branch repeated extglobs. Unfixable today: the advisory's last_affected is 4.0.7 and 4.0.7 IS the latest published version on npm (dist-tags.latest=4.0.7, no 4.0.8 in any channel), so there is no upgrade to take. Dev-only and not reachable from app input: every edge is in the vitest toolchain (vite 8.3.8 and vitest 4.1.12 both declare picomatch ^4.0.7, tinyglobby 0.2.17 at 4.0.4), nothing here ships in the bundle, and the globs those tools evaluate are repo-controlled config patterns (include/exclude lists in vite.config), never attacker-supplied. Refreshing all three to their current latest changes nothing -- tinyglobby 0.2.17, vite 8.3.8 and vitest 5.1.0 still all depend on picomatch. Drop the entry when an upstream release moves off picomatch or picomatch ships a fix."
+reason = "picomatch ReDoS through single-branch repeated extglobs. Unfixable today: the advisory's last_affected is 4.0.7 and 4.0.7 IS the latest published version on npm (dist-tags.latest=4.0.7, newest publish 2026-08-24, no 4.0.8 in any channel), so there is no upgrade to take. Dev-only and not reachable from app input: every edge is in the vitest toolchain (surfaces/gui/package-lock.json: vite 8.3.8 and vitest 4.1.12 both pin picomatch 4.0.7, tinyglobby 0.2.17 rides 4.0.4, all dev), nothing here ships in the bundle, and the globs those tools evaluate are repo-controlled config patterns (include/exclude lists in vite.config), never attacker-supplied. Drop the entry when an upstream release moves off picomatch or picomatch ships a fix."
