@@ -117,6 +117,56 @@ jobs:
         --recursive
         ./
 
+  # The osv-scanner jobs around this one answer "is anything unaccepted?". This
+  # job asks the opposite question, which nothing used to ask: "is anything
+  # accepted that no longer needs to be?".
+  #
+  # Both directions matter. On 2026-11-18 thirteen of twenty entries were dead --
+  # six zip rows pinned past their fix, five unic-* rows whose parent had moved,
+  # two quick-xml rows fixed by an upgrade. Nothing reported any of them.
+  # osv-scanner prints "unused ignores" only for an id it saw and could not match
+  # to a package, so it was silent on all thirteen: the ids still existed, they
+  # just no longer described this tree. A dead suppression is not neutral -- it
+  # hides any FUTURE finding for its crate, which is how the zip rows would have
+  # swallowed a regression in a path that IS reachable on Windows.
+  #
+  # No osv-scanner here, no network, no token: it reads the lockfiles and
+  # osv-scanner.toml and compares against the fixed-version list in
+  # scripts/check_suppressions.py. That keeps it fast enough to run on every
+  # event rather than only on audit day, which is the point -- a dead entry
+  # should surface on the commit that killed it.
+  #
+  # It also fails on an id the map does not know (UNMAPPED). That replaces a
+  # manual discovery: the original 2026-11-18 task counted 21 entries when there
+  # were 20, because one "match" was the literal [[IgnoredVulns]] string inside
+  # this file's own header comment.
+  suppression-register:
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+
+      # Stdlib-only, like osv_delta.py: tomllib ships in 3.11+, and the 3.10
+      # floor in pyproject.toml is handled by a tomli fallback inside the script.
+      - name: "Fail on suppressions the dependency graph has outgrown"
+        run: python scripts/check_suppressions.py
+
+      - name: "The expiry register must match the config it describes"
+        run: |
+          python scripts/check_suppressions.py --markdown docs/dependency-risk-register.md
+          if ! git diff --quiet -- docs/dependency-risk-register.md; then
+            echo "::error file=docs/dependency-risk-register.md,line=1::The register is stale. Regenerate it with: python scripts/check_suppressions.py --markdown docs/dependency-risk-register.md"
+            git diff -- docs/dependency-risk-register.md
+            exit 1
+          fi
+
+      - name: "Print the expiry calendar"
+        run: python scripts/check_suppressions.py
+
   push-delta:
     if: github.event_name == 'push'
     runs-on: ubuntu-latest

@@ -141,6 +141,17 @@ actually automated today — stated plainly, gaps included:
 - `osv-scanner.toml` holds the accepted-risk list. Each entry carries a code-path
   justification and an expiry date, so an accepted advisory must be re-argued instead
   of ageing silently.
+- The accept-list is checked in both directions. `scripts/check_suppressions.py` runs
+  on every push and pull request and fails when an entry has stopped describing the
+  dependency graph \u2014 the crate is gone from every lockfile, or it has moved past the
+  advisory's fixed version \u2014 or when an id maps to no package at all. The 2026-11-18
+  audit found 13 of 20 entries in exactly that state; nothing had reported them,
+  because a dead suppression still names a real advisory, so the scanner has nothing
+  to flag. Each dead row also silently covers any *future* finding for its crate.
+- `docs/dependency-risk-register.md` is generated from that config
+  (`--markdown`), soonest due date first, and is compared against it in CI. Seven
+  acceptances are live at 1.0.5; the nearest lapses 2027-03-01 (glib, blocker: gtk
+  0.18 pins glib ^0.18 upstream).
 - Both jobs are blocking as of 2026-11-15, including the weekly full-backlog scan
   (`fail-on-vuln: true`). That flip was made only after the backlog drained: the exact
   job invocation (`--config=osv-scanner.toml --recursive ./`) returns "No issues
