@@ -18,7 +18,7 @@ upstream `aisuite` / `andrewyng/openworker` repositories, and inventing a narrat
 from commit subjects would be worse than saying so. The `baseline-20261104` tag marks
 where this fork's own release line starts.
 
-## [Unreleased]
+## [1.0.6] — 2026-11-19
 
 ### Added
 
@@ -52,6 +52,18 @@ where this fork's own release line starts.
 - The expiry calendar lives in `docs/dependency-risk-register.md` and is generated
   from the config, so it cannot drift from it. A test compares the committed file
   with what `osv-scanner.toml` currently produces.
+
+### Changed — documentation
+
+- `docs/branch-protection.md` had drifted from the live configuration: it claimed
+  12 required checks and listed 12, while `main` has required 13 since
+  `suppression-register` was added. The table now lists `suppression-register`
+  (5–10s on a PR), the headline and section heading both read 13, and a short note
+  explains why that job *can* be required while `push-delta`, `code-scanning` and
+  `full-backlog` cannot: it is guarded by `if: github.event_name != 'schedule'`, so
+  it does report on pull requests. The `2 of 12` inside the canary quote was left
+  verbatim — it is the API response from that moment, not a typo — with an
+  annotation saying the set has since grown.
 
 ### Fixed — dependency and supply-chain work
 
