@@ -77,8 +77,33 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
 
+      - name: Toolchain fingerprint (cache-key salt)
+        # Windows-only. See the long explanation in ci.yml's `rust` job: rust-cache's
+        # key has no runner-image component, but `target/` carries whisper-rs-sys's
+        # CMake build directory with a hardcoded generator name and absolute MSVC
+        # paths, so an image roll poisons the next restore (F-ed599eee). Salting with
+        # the installed toolset makes that a cold build rather than a broken one.
+        if: runner.os == 'Windows'
+        id: toolchain
+        shell: pwsh
+        run: |
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          if (-not (Test-Path $vswhere)) { throw "vswhere.exe not found at $vswhere" }
+          $vsRoot = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+          if (-not $vsRoot) { throw "vswhere found no installation with the VC++ x64 toolset" }
+          $vsRoot = $vsRoot.Trim()
+          $msvc = Get-ChildItem (Join-Path $vsRoot 'VC\Tools\MSVC') -Directory | Sort-Object Name | Select-Object -Last 1
+          if (-not $msvc) { throw "no MSVC toolset under $vsRoot\VC\Tools\MSVC" }
+          $vsVersion = Split-Path (Split-Path $vsRoot -Parent) -Leaf
+          $fp = "vs$vsVersion-msvc$($msvc.Name)"
+          "Computed toolchain fingerprint: $fp"
+          "fp=$fp" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
         with:
+          # Empty on macOS on purpose: the fingerprint step is Windows-only, and an
+          # empty `key` input is the action's default behaviour there.
+          key: ${{ runner.os == 'Windows' && steps.toolchain.outputs.fp || '' }}
           workspaces: surfaces/gui/src-tauri
 
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0

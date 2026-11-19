@@ -225,14 +225,53 @@ jobs:
       - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
         with:
           components: clippy
+      - name: Toolchain fingerprint (cache-key salt)
+        # rust-cache's key is rustc version + Cargo.lock hash + `Windows_NT-x64` -- it
+        # cannot tell which runner image wrote a cache. But `target/` carries
+        # whisper-rs-sys's CMake build directory, which hardcodes the generator name
+        # and absolute MSVC paths. When GitHub rolls the image, that tree is restored
+        # onto a toolchain it no longer describes, and CMake fails. Both observed
+        # shapes are in F-ed599eee:
+        #   * "Does not match the generator used previously: Visual Studio 18 2026"
+        #     (job 135289948429) -- a cache written on the VS18 image, restored on the
+        #     VS17 image after windows-latest was pinned to windows-2022;
+        #   * "The CMAKE_ASM_COMPILER: .../MSVC/14.51.36231/... is not a full path to
+        #     an existing compiler tool" (job 135207754129) -- the cached
+        #     CMakeCache.txt pinned cl.exe to toolset 14.51.36231, while that same log's
+        #     own C/CXX compiler checks resolve 14.52.37025: the cache described a
+        #     toolset the image no longer ships.
+        # A cold build of the same commit was green in 3m27s (job 135267771803), which
+        # is what a salted key reproduces after an image roll. Note the two failures
+        # restored one identical key (v0-rust-rust-Windows_NT-x64-ea627442-2cbcca30,
+        # `full match: true`). Salting with the installed toolset turns an image roll
+        # into a cold build instead of a broken one.
+        id: toolchain
+        shell: pwsh
+        run: |
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          if (-not (Test-Path $vswhere)) { throw "vswhere.exe not found at $vswhere" }
+          $vsRoot = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+          if (-not $vsRoot) { throw "vswhere found no installation with the VC++ x64 toolset" }
+          $vsRoot = $vsRoot.Trim()
+          $msvc = Get-ChildItem (Join-Path $vsRoot 'VC\Tools\MSVC') -Directory | Sort-Object Name | Select-Object -Last 1
+          if (-not $msvc) { throw "no MSVC toolset under $vsRoot\VC\Tools\MSVC" }
+          # The version directory ('2022' vs '18') drives which generator CMake picks;
+          # the toolset version drives the cl.exe path baked into the cache. Note the
+          # *leaf* is the edition (Enterprise/BuildTools), which is the same on both
+          # images, so the version has to be read from the parent directory.
+          $vsVersion = Split-Path (Split-Path $vsRoot -Parent) -Leaf
+          $fp = "vs$vsVersion-msvc$($msvc.Name)"
+          "Computed toolchain fingerprint: $fp"
+          "fp=$fp" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
         with:
+          key: ${{ steps.toolchain.outputs.fp }}
           workspaces: |
             surfaces/gui/src-tauri
             stt
       - name: Locate libclang (whisper-rs bindgen)
-        # windows-latest usually ships LLVM already; install only when it is absent
-        # so the job does not depend on an image detail that can change.
+        # Both windows-2022 and windows-latest ship LLVM already; install only when it
+        # is absent so the job does not depend on an image detail that can change.
         shell: pwsh
         run: |
           $llvm = "C:\Program Files\LLVM\bin"
