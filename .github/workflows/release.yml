@@ -59,7 +59,13 @@ jobs:
           # natively — the sidecar is a PyInstaller freeze, which cannot cross-compile.
           - os: macos-15-intel
             slug: macos-x64
-          - os: windows-latest
+          # Pinned to windows-2022 for the same reason ci.yml's `rust` job is (see the
+          # comment there): windows-latest now resolves to win25-vs2026 (CMake 4.5 +
+          # VS 18), whose generator mis-resolves whisper.cpp's ASM compiler, and this job
+          # runs a cold `tauri build` that compiles whisper-rs-sys -- exactly what
+          # F-ed599eee broke. windows-2022 (Server 2022, VS 17, CMake 3.31) is a
+          # different image family and is unaffected. It also has WiX 3.14 and NSIS.
+          - os: windows-2022
             slug: windows
     runs-on: ${{ matrix.os }}
     env:

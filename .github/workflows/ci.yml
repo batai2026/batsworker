@@ -206,7 +206,29 @@ jobs:
   # the copied layout: a `dist/**/*` resource glob flattens `assets/` into the
   # dist root, which leaves index.html pointing at files that are not there.
   rust:
-    runs-on: windows-latest
+    # Pinned to windows-2022 (Server 2022, VS 17, CMake 3.31.6) rather than
+    # windows-latest. This is the only job that compiles whisper-rs-sys, whose
+    # build.rs drives CMake over the vendored whisper.cpp; the Linux/macOS legs
+    # and the non-Rust Windows jobs do not, so only this job needs the isolation.
+    #
+    # Why: `windows-latest` now resolves to the windows-2025-vs2026 image (it is
+    # the target of `windows-latest`, `windows-2025` *and* `windows-2025-vs2026`),
+    # which ships CMake 4.5.x + VS 18. CMake 4.5's VS18 generator resolves the ASM
+    # compiler to an MSVC version that is not the one installed, so
+    # `enable_language(ASM)` in whisper.cpp/ggml/CMakeLists.txt dies with
+    # "CMAKE_ASM_COMPILER ... is not a full path to an existing compiler tool".
+    # The image is updated weekly and the failure is per-image-build: a run that
+    # drew an older image passed, the next one drawn after the CMake bump failed
+    # (F-ed599eee). A cache-salted cold build proved the *code* is fine -- the
+    # failure tracks the image, not a cold compile.
+    #
+    # windows-2022 is a different image family (Server 2022 + VS 17 + CMake 3.31),
+    # where CMake never picks the VS18 generator. It still has LLVM, WiX and NSIS.
+    # Revisit when windows-2022 is retired (no retirement announcement as of
+    # 2026-11-19) or when whisper-rs-sys builds cleanly on the VS2026 image; at
+    # that point drop the pin and add a one-cold-build canary instead of trusting
+    # the cache.
+    runs-on: windows-2022
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
@@ -231,8 +253,8 @@ jobs:
             surfaces/gui/src-tauri
             stt
       - name: Locate libclang (whisper-rs bindgen)
-        # windows-latest usually ships LLVM already; install only when it is absent
-        # so the job does not depend on an image detail that can change.
+        # Both windows-2022 and windows-latest ship LLVM already; install only when it
+        # is absent so the job does not depend on an image detail that can change.
         shell: pwsh
         run: |
           $llvm = "C:\Program Files\LLVM\bin"
