@@ -14,10 +14,11 @@ Every entry in `osv-scanner.toml` is debt with a due date. When an `effectiveUnt
 | 2027-08-01 | `RUSTSEC-2026-0370` | `zvariant` | zvariant 5.12.0 is unmaintained |
 | 2027-08-01 | `RUSTSEC-2026-0371` | `zbus_names` | zbus_names 4.3.2 is unmaintained |
 | 2027-08-01 | `RUSTSEC-2026-0372` | `zvariant_derive` | zvariant_derive 5.12.0 is unmaintained |
-| 2027-08-01 | `GHSA-fc5q-39xc-vjpf` | `picomatch` | picomatch ReDoS through single-branch repeated extglobs |
 
 ## Rotation
 
 Each row needs one of two outcomes before its date: an upgrade that closes the advisory, or a fresh argument written into the entry's `reason` plus a new `effectiveUntil`. Extending a date without re-arguing it is the failure mode this register is meant to make visible.
 
 `scripts/check_suppressions.py` (run by `tests/test_suppressions.py`) fails the build if an entry no longer maps to a package, or if the package is already pinned past the advisory's fixed version — both were true of 13 of the 20 entries removed on 2026-11-18.
+
+It also fails on a third thing an entry can outlive: the advisory itself. GHSA-fc5q-39xc-vjpf (picomatch) was withdrawn by GitHub on 2026-11-18T15:38:56Z as "not a security issue". A suppression for a retracted advisory still swallows any future finding for its package, so it is reported as WITHDRAWN rather than accepted. The two failure modes run in opposite directions and land in the same place: evidence that stopped existing (the package moved, or was never affected), and a conclusion that was overturned.

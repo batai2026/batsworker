@@ -76,7 +76,12 @@ ADVISORIES: dict[str, dict] = {
     "rustsec-2026-0371": {"package": "zbus_names", "ecosystem": "crates.io", "fixed_at": None},
     "rustsec-2026-0372": {"package": "zvariant_derive", "ecosystem": "crates.io", "fixed_at": None},
     # ReDoS; last_affected 4.0.7, and 4.0.7 is npm's latest (2026-08-24).
-    "ghsa-fc5q-39xc-vjpf": {"package": "picomatch", "ecosystem": "npm", "fixed_at": None},
+    # WITHDRAWN 2026-11-18T15:38:56Z as "not a security issue" -- see the note in
+    # audit() below. The row stays so that re-adding the suppression by hand is
+    # reported as WITHDRAWN rather than UNMAPPED, and the advice stays legible.
+    "ghsa-fc5q-39xc-vjpf": {"package": "picomatch", "ecosystem": "npm",
+                            "fixed_at": None,
+                            "withdrawn": "2026-11-18T15:38:56Z"},
     # Ids deleted on 2026-11-18, kept here so that re-adding one by hand is
     # reported as DEAD instead of UNMAPPED -- the message points at the reason.
     "ghsa-m665-v7pm-7grj": {"package": "zip", "ecosystem": "crates.io", "fixed_at": "9.0.5"},
@@ -294,6 +299,23 @@ def audit(entries: list[dict], pins_by_eco: dict[str, list[Pinned]],
         pins = [p for p in pins_by_eco.get(ecosystem, []) if p.package == package]
         fixed = meta.get("fixed_at")
 
+        # A withdrawn advisory is not "unfixed", it is retracted: the CVE was
+        # judged not to be a security issue (picomatch, withdrawn
+        # 2026-11-18T15:38:56Z). osv-scanner drops it and reports the entry as an
+        # unused ignore, but this check reads a static map, so without this branch
+        # it calls the entry "alive" forever and the register keeps advertising a
+        # risk that no longer exists. Checked before `fixed is None`, which would
+        # otherwise classify every withdrawn advisory as alive.
+        if meta.get("withdrawn"):
+            reports.append(EntryReport(
+                vid, "withdrawn",
+                f"the advisory was withdrawn on {meta['withdrawn']} (not a security "
+                "issue), so there is nothing left to accept -- delete the entry "
+                "from osv-scanner.toml",
+                package=package, pins=pins, effective_until=until,
+                days_left=days, near_expiry=near, why_not_fixed=why))
+            continue
+
         if not pins:
             reports.append(EntryReport(
                 vid, "dead",
@@ -336,12 +358,14 @@ def audit(entries: list[dict], pins_by_eco: dict[str, list[Pinned]],
 def render(reports: list[EntryReport]) -> str:
     dead = [r for r in reports if r.status == "dead"]
     unmapped = [r for r in reports if r.status == "unmapped"]
+    withdrawn = [r for r in reports if r.status == "withdrawn"]
     alive = [r for r in reports if r.status == "alive"]
     near = [r for r in reports if r.near_expiry]
 
     lines = [
         f"{len(reports)} suppression(s): {len(alive)} alive, "
         f"{len(dead)} dead, {len(unmapped)} unmapped"
+        + (f", {len(withdrawn)} withdrawn" if withdrawn else "")
         + (f", {len(near)} expiring within {EXPIRY_WARN_DAYS} days" if near else ""),
         "",
     ]
@@ -352,14 +376,20 @@ def render(reports: list[EntryReport]) -> str:
     for report in unmapped:
         print(f"::error file=osv-scanner.toml,title={report.id} is unmapped"
               f"::{report.id}: {report.detail}")
+    for report in withdrawn:
+        print(f"::error file=osv-scanner.toml,title={report.id} was withdrawn"
+              f"::{report.id}: {report.detail}")
 
-    if dead or unmapped:
+    if dead or unmapped or withdrawn:
         lines.append("These entries must be removed (or mapped, if the id is real):")
         for report in dead:
             lines.append(f"  DEAD      {report.id}")
             lines.append(f"            {report.detail}")
         for report in unmapped:
             lines.append(f"  UNMAPPED  {report.id}")
+            lines.append(f"            {report.detail}")
+        for report in withdrawn:
+            lines.append(f"  WITHDRAWN {report.id}")
             lines.append(f"            {report.detail}")
         lines.append("")
     else:
@@ -442,6 +472,15 @@ def render_markdown(reports: list[EntryReport], today: dt.date) -> str:
         "already pinned past the advisory's fixed version \u2014 both were true of 13 of "
         "the 20 entries removed on 2026-11-18.",
         "",
+        "It also fails on a third thing an entry can outlive: the advisory itself. "
+        "GHSA-fc5q-39xc-vjpf (picomatch) was withdrawn by GitHub on "
+        "2026-11-18T15:38:56Z as \"not a security issue\". A suppression for a "
+        "retracted advisory still swallows any future finding for its package, so "
+        "it is reported as WITHDRAWN rather than accepted. The two failure modes "
+        "run in opposite directions and land in the same place: evidence that "
+        "stopped existing (the package moved, or was never affected), and a "
+        "conclusion that was overturned.",
+        "",
     ]
     return "\n".join(lines)
 
@@ -520,7 +559,8 @@ def main(argv: list[str] | None = None) -> int:
     else:
         sys.stdout.write(render(reports))
 
-    return 1 if any(r.status in ("dead", "unmapped") for r in reports) else 0
+    return 1 if any(r.status in ("dead", "unmapped", "withdrawn")
+                    for r in reports) else 0
 
 
 if __name__ == "__main__":

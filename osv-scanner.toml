@@ -153,12 +153,21 @@ reason = "zvariant_derive 5.12.0 is unmaintained. Proc-macro sibling of zvariant
 
 # --- dev toolchain only (never in the bundle) ---
 
-[[IgnoredVulns]]
-id = "GHSA-fc5q-39xc-vjpf"
-# CVE-2026-112366, CVSS 8.7. Published 2026-10-19 but only surfaced here on
-# 2026-11-17T15:56:42Z (github_reviewed_at), when GitHub promoted it to a reviewed
-# advisory and OSV re-published it (modified=2026-11-17T16:00:03Z). That lands
-# between the last green audit (15:23) and the red one (16:05), so this is an
-# advisory-database change: no dependency moved.
-effectiveUntil = 2027-08-01
-reason = "picomatch ReDoS through single-branch repeated extglobs. Unfixable today: the advisory's last_affected is 4.0.7 and 4.0.7 IS the latest published version on npm (dist-tags.latest=4.0.7, newest publish 2026-08-24, no 4.0.8 in any channel), so there is no upgrade to take. Dev-only and not reachable from app input: every edge is in the vitest toolchain (surfaces/gui/package-lock.json: vite 8.3.8 and vitest 4.1.12 both pin picomatch 4.0.7, tinyglobby 0.2.17 rides 4.0.4, all dev), nothing here ships in the bundle, and the globs those tools evaluate are repo-controlled config patterns (include/exclude lists in vite.config), never attacker-supplied. Drop the entry when an upstream release moves off picomatch or picomatch ships a fix."
+# GHSA-fc5q-39xc-vjpf (picomatch, ReDoS via repeated extglobs) was suppressed
+# here from 2026-11-17 to 2026-11-21 and is deliberately gone.
+#
+# The suppression was correct while it lasted: no fix existed (last_affected
+# 4.0.7 and 4.0.7 was npm's latest), and the package only rides the vitest
+# toolchain, never the bundle. It surfaced on 2026-11-17T15:56Z purely because
+# GitHub promoted a 2026-10-19 publication to github_reviewed -- no dependency
+# moved.
+#
+# On 2026-11-18T15:38:56Z GitHub WITHDREW it as "not a security issue".
+# osv-scanner dropped it and the next scan called this entry an unused ignore,
+# which is the signal to delete rather than extend. A suppression for an
+# advisory that no longer exists is not harmless: it would swallow any future
+# real finding against picomatch for as long as the id stayed in this file.
+#
+# scripts/check_suppressions.py reports a re-added entry as WITHDRAWN (exit 1)
+# rather than treating it as a live acceptance, so restoring it by hand fails
+# the build instead of silently passing.

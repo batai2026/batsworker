@@ -156,6 +156,31 @@ def test_prerelease_does_not_count_as_patched(tmp_path):
     assert code == 0, "a prerelease must not be judged patched\n" + out
 
 
+def test_withdrawn_advisory_is_its_own_status(tmp_path):
+    """picomatch's advisory was withdrawn 2026-11-18T15:38:56Z.
+
+    osv-scanner drops a withdrawn id and reports the entry as an unused ignore.
+    This checker reads a static map, so before the `withdrawn` branch it called
+    the entry "alive" forever -- the register kept advertising a risk GitHub had
+    retracted, and the suppression stayed in place swallowing future findings for
+    the package. A withdrawn id must fail the build, not pass it.
+    """
+    make_root(
+        tmp_path,
+        config=(
+            '[[IgnoredVulns]]\nid = "GHSA-fc5q-39xc-vjpf"\n'
+            'reason = "no fix exists."\n'
+            "effectiveUntil = 2027-08-01\n"
+        ),
+        npm=npm_lock(("picomatch", "4.0.7")),
+    )
+    code, out = run(tmp_path, "--today", "2026-11-18")
+    assert code == 1, out
+    assert "WITHDRAWN" in out
+    assert "withdrawn on 2026-11-18T15:38:56Z" in out
+    assert "1 withdrawn" in out
+
+
 def test_unknown_advisory_id_is_unmapped(tmp_path):
     """The 21st entry was a comment string; a real unknown id must be named too."""
     make_root(
@@ -334,7 +359,11 @@ def test_register_has_no_volatile_columns():
 
 def test_every_live_entry_is_mapped():
     """A new entry added without an ADVISORIES row would show up as UNMAPPED in
-    CI; assert it here too so the failure is local and legible."""
+    CI; assert it here too so the failure is local and legible.
+
+    The map keeps a row for the withdrawn picomatch advisory on purpose, so this
+    checks that the *config* is mapped, not that the config spans the map.
+    """
     entries = cs.parse_entries((ROOT / "osv-scanner.toml").read_text(encoding="utf-8"))
     for entry in entries:
         vid = str(entry.get("id") or "")
@@ -345,9 +374,10 @@ def test_every_live_entry_is_mapped():
 
 
 def test_live_repo_is_clean():
-    """The real tree must pass: 7 entries, all alive, exit 0."""
+    """The real tree must pass: 6 entries, all alive, exit 0."""
     code, out = run(ROOT, "--today", "2026-11-18")
     assert code == 0, out
-    assert "7 suppression(s)" in out
+    assert "6 suppression(s)" in out
     assert "0 dead" in out
     assert "0 unmapped" in out
+    assert "withdrawn" not in out

@@ -37,6 +37,16 @@
 # this? Advisory drift against unchanged code still blocks, but on the scheduled
 # run, once a week, for whoever is on audit duty -- not on a random docs commit.
 #
+#     Postscript on picomatch (2026-11-21): GitHub withdrew GHSA-fc5q-39xc-vjpf
+#     on 2026-11-18T15:38:56Z as "not a security issue". The dated acceptance was
+#     deleted rather than extended, and osv-scanner.toml now carries that history
+#     as a comment. Why this is worth knowing: the delta-vs-full split above was
+#     argued from that advisory, and it turned out the advisory itself was wrong.
+#     The split still holds -- an advisory database can gain *and lose* rows with
+#     no dependency change, which is exactly the drift an author cannot act on --
+#     but anyone re-reading this as "picomatch is a known risk" is reading a
+#     retracted finding.
+#
 #     What "drained" means here, measured rather than assumed. On the parent
 #     commit (rustix 1.1.4) the scan reports 21 rows across 13 packages; the
 #     accept-list covers 20 of them and RUSTSEC-2026-0486 is the one gap, which is
@@ -79,10 +89,16 @@
 # rustix 1.1.6 and calls the *_query functions. Bump them together; nothing at
 # build time catches the bad pairing.
 #
-# Coverage note: the scan covers surfaces/gui/package-lock.json (565 packages),
-# stt/Cargo.lock (173), surfaces/gui/src-tauri/Cargo.lock (558) and uv.lock (127,
-# as enumerated by osv-scanner --all-packages). Python IS covered, through
-# uv.lock. Two caveats on that,
+# Coverage note: the scan covers surfaces/gui/package-lock.json (481 packages),
+# stt/Cargo.lock (156), surfaces/gui/src-tauri/Cargo.lock (565) and uv.lock (132,
+# as enumerated by osv-scanner 2.7.1 --all-packages; the default walk returns the
+# same four counts, verified 2026-11-21). These numbers replace 565/173/558/127,
+# which this comment claimed for a year of edits and no command reproduced --
+# they were not any consistent convention, just stale. Quote them from a fresh
+# run, not from here: they move with every dependabot merge, and a wrong count
+# in a coverage note is how an audit overstates what it looked at.
+#
+# Python IS covered, through uv.lock. Two caveats on that,
 # neither of which this job can detect: the lock includes dev and optional
 # extras, so it overstates what ships; and CI installs requirements-dev.lock,
 # which is `uv export`ed from uv.lock by hand, so a lock that drifts from that
