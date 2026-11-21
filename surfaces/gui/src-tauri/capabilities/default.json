@@ -3,6 +3,9 @@
   "identifier": "default",
   "description": "Capabilities for the main coworker window.",
   "windows": ["main"],
+  "remote": {
+    "urls": ["http://127.0.0.1:*"]
+  },
   "permissions": [
     "core:default",
     "core:window:allow-hide",
@@ -10,6 +13,28 @@
     "core:window:allow-set-focus",
     "core:window:allow-unminimize",
     "dialog:default",
-    "autostart:default"
+    "autostart:default",
+    "allow-pick-folder",
+    "allow-get-autostart",
+    "allow-set-autostart",
+    "allow-get-keep-awake",
+    "allow-set-keep-awake",
+    "allow-start-window-drag",
+    "allow-openshell-version",
+    "allow-docker-host-networking",
+    "allow-get-dictation-status",
+    "allow-start-dictation",
+    "allow-stop-dictation",
+    "allow-cancel-dictation",
+    "allow-download-dictation-model",
+    "allow-cancel-dictation-model-download",
+    "allow-verify-dictation-model",
+    "allow-mark-dictation-test-passed",
+    "allow-delete-dictation-model",
+    "allow-dictation-level",
+    "allow-check-for-update",
+    "allow-download-update",
+    "allow-clear-pending-update",
+    "allow-install-update"
   ]
 }
