@@ -297,12 +297,19 @@ class SessionsMixin(ManagerBase):
             return {"ok": False, "error": "no spans recorded for this session"}
         import httpx
 
+        # The collector URL is user config, so it can be an internal host behind a
+        # private CA. Verify against the shared certifi ∪ OS-store context instead of
+        # letting httpx resolve the store itself (certifi-only when SSL_CERT_FILE is
+        # set — the failure mode documented in coworker/net_trust.py).
+        from ..net_trust import trust_context
+
         try:
             resp = httpx.post(
                 endpoint.rstrip("/") + "/v1/traces",
                 json=to_otlp_json(spans),
                 headers={"Content-Type": "application/json"},
                 timeout=20,
+                verify=trust_context(),
             )
             resp.raise_for_status()
         except Exception as exc:
