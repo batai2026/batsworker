@@ -5,6 +5,7 @@ import type { SecurityFinding } from "../api";
 import {
   addEgressDomain,
   addSecurityFinding,
+  fetchDiagnosticsReport,
   getEgressPolicy,
   getOpenShellStatus,
   getSandboxSettings,
@@ -14,7 +15,12 @@ import {
   saveThreatModel,
   setSandboxSettings,
 } from "../api";
-import { getDockerHostNetworking, getOpenShellVersion, isTauri } from "../tauri";
+import {
+  getDockerHostNetworking,
+  getOpenShellVersion,
+  isTauri,
+  saveDiagnostics,
+} from "../tauri";
 
 vi.mock("../api", () => ({
   getThreatModel: vi.fn(),
@@ -30,12 +36,14 @@ vi.mock("../api", () => ({
   addEgressDomain: vi.fn(),
   removeEgressDomain: vi.fn(),
   getOpenShellStatus: vi.fn(),
+  fetchDiagnosticsReport: vi.fn(),
 }));
 
 vi.mock("../tauri", () => ({
   isTauri: vi.fn(() => false),
   getOpenShellVersion: vi.fn(),
   getDockerHostNetworking: vi.fn(),
+  saveDiagnostics: vi.fn(),
 }));
 
 afterEach(() => {
@@ -192,6 +200,101 @@ describe("SecuritySection", () => {
     fireEvent.click(screen.getByTestId("egress-remove-api.acme.com"));
     await waitFor(() => expect(removeEgressDomain).toHaveBeenCalledWith("api.acme.com"));
     await waitFor(() => expect(screen.getByTestId("egress-empty")).toBeTruthy());
+  });
+
+  describe("diagnostics export", () => {
+    // Shared fixture: a minimal security page, since the card lives inside it.
+    async function renderWithDefaults() {
+      vi.mocked(getThreatModel).mockResolvedValue({ content: "# TM\n" });
+      vi.mocked(getSecurityFindings).mockResolvedValue([]);
+      vi.mocked(getSandboxSettings).mockResolvedValue({
+        enabled: false,
+        backend: "docker",
+        image: "python:3.12-slim",
+        network: "none",
+      });
+      mockEgressDefaults();
+      vi.mocked(fetchDiagnosticsReport).mockResolvedValue({
+        text: "OpenWorker diagnostics\n",
+        filename: "openworker-diagnostics-20261122-120000.txt",
+      });
+      render(<SecuritySection />);
+      await waitFor(() => expect(screen.getByTestId("diagnostics-card")).toBeTruthy());
+    }
+
+    it("saves through the native dialog in the desktop shell", async () => {
+      vi.mocked(isTauri).mockReturnValue(true);
+      vi.mocked(saveDiagnostics).mockResolvedValue("E:\\reports\\diag.txt");
+      await renderWithDefaults();
+
+      fireEvent.click(screen.getByTestId("export-diagnostics"));
+
+      await waitFor(() =>
+        expect(saveDiagnostics).toHaveBeenCalledWith(
+          "OpenWorker diagnostics\n",
+          "openworker-diagnostics-20261122-120000.txt",
+        ),
+      );
+      // The user needs to know WHERE it went; a bare "done" leaves them hunting.
+      await waitFor(() =>
+        expect(screen.getByTestId("diagnostics-note").textContent).toContain("reports"),
+      );
+    });
+
+    it("says nothing when the user cancels the save dialog", async () => {
+      vi.mocked(isTauri).mockReturnValue(true);
+      vi.mocked(saveDiagnostics).mockResolvedValue(null);
+      await renderWithDefaults();
+
+      fireEvent.click(screen.getByTestId("export-diagnostics"));
+
+      await waitFor(() => expect(saveDiagnostics).toHaveBeenCalled());
+      // Cancelling is a normal outcome: no "saved" claim, no error banner.
+      expect(screen.queryByTestId("diagnostics-note")).toBeNull();
+    });
+
+    it("falls back to a download when there is no desktop shell", async () => {
+      vi.mocked(isTauri).mockReturnValue(false);
+      const createObjectURL = vi.fn(() => "blob:diag");
+      const revokeObjectURL = vi.fn();
+      Object.defineProperty(URL, "createObjectURL", { value: createObjectURL, configurable: true });
+      Object.defineProperty(URL, "revokeObjectURL", { value: revokeObjectURL, configurable: true });
+      const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+      await renderWithDefaults();
+
+      fireEvent.click(screen.getByTestId("export-diagnostics"));
+
+      await waitFor(() => expect(click).toHaveBeenCalled());
+      expect(createObjectURL).toHaveBeenCalledWith(expect.any(Blob));
+      // Leaking the object URL would pin the blob in memory for the page's lifetime.
+      expect(revokeObjectURL).toHaveBeenCalledWith("blob:diag");
+      expect(saveDiagnostics).not.toHaveBeenCalled();
+      click.mockRestore();
+    });
+
+    it("surfaces a failed export instead of failing silently", async () => {
+      vi.mocked(isTauri).mockReturnValue(true);
+      vi.mocked(fetchDiagnosticsReport).mockRejectedValue(new Error("diagnostics export failed: 500"));
+      vi.mocked(getThreatModel).mockResolvedValue({ content: "# TM\n" });
+      vi.mocked(getSecurityFindings).mockResolvedValue([]);
+      vi.mocked(getSandboxSettings).mockResolvedValue({
+        enabled: false,
+        backend: "docker",
+        image: "python:3.12-slim",
+        network: "none",
+      });
+      mockEgressDefaults();
+      render(<SecuritySection />);
+      await waitFor(() => expect(screen.getByTestId("diagnostics-card")).toBeTruthy());
+
+      fireEvent.click(screen.getByTestId("export-diagnostics"));
+
+      // Silently doing nothing here would reproduce the exact complaint that
+      // motivated this feature.
+      await waitFor(() =>
+        expect(screen.getByTestId("diagnostics-note").textContent).toContain("500"),
+      );
+    });
   });
 
   it("shows the desktop sandbox checks only in the desktop shell", async () => {

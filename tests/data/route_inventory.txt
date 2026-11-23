@@ -182,6 +182,9 @@ GET	/v1/browser/recordings	browser_recordings_get
 GET	/v1/web-search	web_search_get
 POST	/v1/web-search	web_search_set
 POST	/v1/observability/export	observability_export
+POST	/v1/ui/log	ui_log_post
+GET	/v1/ui/log	ui_log_get
+GET	/v1/ui/log/export	ui_log_export
 GET	/v1/providers	providers_get
 POST	/v1/providers	providers_set
 DELETE	/v1/providers/{name}	providers_remove

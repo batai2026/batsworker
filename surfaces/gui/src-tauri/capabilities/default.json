@@ -15,6 +15,7 @@
     "dialog:default",
     "autostart:default",
     "allow-pick-folder",
+    "allow-save-diagnostics",
     "allow-get-autostart",
     "allow-set-autostart",
     "allow-get-keep-awake",

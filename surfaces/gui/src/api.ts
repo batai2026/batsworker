@@ -2858,3 +2858,32 @@ export async function nameCurrentProject(
   });
   return r.json();
 }
+
+// -- webview diagnostics (export for a bug report) ----------------------------
+
+export interface UiLogEvent {
+  command?: string;
+  message?: string;
+  level?: string;
+  ts?: number;
+}
+
+/** Newest-first rows plus the on-disk path, for pointing a user at the raw file. */
+export async function getUiLog(limit = 100): Promise<{ events: UiLogEvent[]; path: string }> {
+  const r = await fetch(`${httpBase()}/v1/ui/log?limit=${limit}`);
+  return r.json();
+}
+
+/** The diagnostics report as plain text, fetched with launch auth.
+ *
+ *  Returns the body plus the filename the server proposed, so the desktop shell
+ *  can put a matching name in its save dialog instead of inventing one. The name
+ *  travels in Content-Disposition, which is where the server already puts it. */
+export async function fetchDiagnosticsReport(): Promise<{ text: string; filename: string }> {
+  const r = await fetch(`${httpBase()}/v1/ui/log/export`);
+  if (!r.ok) throw new Error(`diagnostics export failed: ${r.status}`);
+  const text = await r.text();
+  const disposition = r.headers.get("Content-Disposition") || "";
+  const named = /filename="?([^"';]+)"?/.exec(disposition);
+  return { text, filename: named ? named[1] : "openworker-diagnostics.txt" };
+}

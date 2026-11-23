@@ -116,4 +116,12 @@ export const zhSettings = {
   "● Listening… speak a short phrase, then stop.": "● 正在聆听…说一小段话，然后停止。",
   "● Ready": "● 就绪",
   "1 project command allowance": "1 项项目命令许可",
+  Diagnostics: "诊断信息",
+  "Export diagnostics": "导出诊断信息",
+  "Exporting…": "正在导出…",
+  "Saved to {path}": "已保存到 {path}",
+  "Downloaded or shown in your browser's downloads.": "已下载，或已显示在浏览器的下载项中。",
+  "Export failed: {error}": "导出失败：{error}",
+  "When a feature silently does nothing, export this log and attach it to your bug report. It lists failed desktop commands with timestamps — no file contents, no credentials.":
+    "当某个功能点了没反应时，请导出这份日志并附在问题报告里。它按时间列出失败的桌面命令——不包含文件内容，也不包含任何凭据。",
 } satisfies Record<string, string>;
