@@ -187,12 +187,28 @@ def build_app(workspace: str | None, model: str, mode: str, frontend_dist: str |
 
 
 def _ensure_ca_bundle() -> None:
-    """Point SSL at certifi's CA bundle if the interpreter has none configured. macOS framework
-    Python ships without a usable system trust store for `aiohttp` (it builds an `ssl` context with
-    no CAs), so the Slack Socket-Mode client fails with CERTIFICATE_VERIFY_FAILED. `httpx`/`requests`
-    bundle certifi already; aiohttp honours the SSL_CERT_FILE env var, so set it once at startup.
+    """Give aiohttp a CA bundle on macOS framework Python; leave Windows alone.
+
+    Two different clients, two different needs:
+
+    * `aiohttp` (Slack Socket Mode) builds an `ssl` context with **no** CAs on macOS
+      framework Python, so it fails with CERTIFICATE_VERIFY_FAILED. It honours
+      `SSL_CERT_FILE`, so set it to certifi there.
+    * On Windows this used to point `SSL_CERT_FILE` at certifi as a "safety net". That
+      net *caused* the outage it was meant to prevent: `httpx` sees the variable and
+      calls `create_default_context(cafile=certifi)`, and CPython **skips
+      `load_default_certs()` whenever a cafile is passed** — so certifi *replaced* the
+      Windows store instead of adding to it, and a private CA installed in the machine
+      `CA` store became invisible. Without the variable, the default context reads both
+      Windows stores and the endpoint verified fine.
+
+    Provider HTTP clients no longer depend on this function at all — they share the
+    certifi ∪ OS-store context from `coworker/net_trust.py`. This is now only about
+    aiohttp's own context, so it stays off Windows where the default already works.
     """
     if os.environ.get("SSL_CERT_FILE"):
+        return
+    if sys.platform == "win32":
         return
     try:
         import certifi
