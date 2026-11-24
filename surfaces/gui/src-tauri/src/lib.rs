@@ -406,9 +406,8 @@ async fn save_diagnostics(app: tauri::AppHandle, contents: String, filename: Str
         .save_file(move |p| {
             let _ = tx.send(p);
         });
-    let Some(target) = rx.recv().ok().flatten() else {
-        return None;
-    };
+    let target = rx.recv().ok().flatten()?;
+
     let path = target.to_string();
     std::fs::write(&path, contents).ok()?;
     Some(path)

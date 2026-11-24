@@ -99,7 +99,9 @@ def merged_pem(*, include_os_store: Optional[bool] = None) -> str:
         include_os_store = sys.platform == "win32"
 
     chunks: list[str] = []
-    seen: set[str] = set()
+    # DER bytes, not PEM text: ssl.PEM_cert_to_DER_cert returns bytes and the OS
+    # store enum yields bytes, so dedupe on the byte form.
+    seen: set[bytes] = set()
 
     try:
         import certifi
