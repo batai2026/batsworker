@@ -139,7 +139,13 @@ def private_ca_server(tmp_path, monkeypatch):
     """Serve TLS from a chain rooted in a CA that only the OS-store API can see.
 
     Returns a callable: `handshake(ctx) -> None` raising on verification failure.
+
+    The CA is injected via `ssl.enum_certificates`, a Windows-only API. On other
+    platforms there is no OS store the merge could read and no way to inject the
+    root, so the scenario is Windows-only by design: skip everywhere else.
     """
+    if not hasattr(ssl, "enum_certificates"):
+        pytest.skip("OS-store injection is Windows-only")
     pytest.importorskip("cryptography")
     root_der, leaf_pem, leaf_key_pem = _make_chain()
 
@@ -238,10 +244,13 @@ def test_certifi_adds_roots_the_windows_store_lacks():
     certifi_ders = {ssl.PEM_cert_to_DER_cert(b) for b in blocks}
 
     missing = certifi_ders - store_ders
-    assert len(missing) > 50, (
-        f"only {len(missing)} certifi roots are missing from the store; the measured "
-        "figure was 84. If this is now small, re-derive whether the merge is still needed."
+    assert missing, (
+        "the Windows store already has every certifi root - if the store is a "
+        "superset of certifi, the merge is a no-op and net_trust's 'union' is a lie"
     )
+    # The count is machine-dependent: measured 84 on the dev machine, 14 on a
+    # GitHub-hosted Windows runner image. Only the _existence_ of a gap is the
+    # load-bearing fact - the merge is pointless iff the store equals certifi.
 
 
 # -- filters and loading mechanism --------------------------------------------

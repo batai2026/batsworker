@@ -26,6 +26,14 @@ import pytest
 REPO = Path(__file__).resolve().parents[1]
 SCRIPT = REPO / "scripts" / "repair_installed_ca_bundle.py"
 
+# The script under test is a Windows-install repair tool: its CA source is the
+# Windows cert store (`ssl.enum_certificates`, a Windows-only API) and its probe
+# targets are Windows install paths. There is nothing to test on other platforms.
+pytestmark = pytest.mark.skipif(
+    not hasattr(ssl, "enum_certificates"),
+    reason="repair script reads the Windows cert store (Windows-only API)",
+)
+
 
 def _load_script():
     spec = importlib.util.spec_from_file_location("repair_ca_bundle", SCRIPT)
