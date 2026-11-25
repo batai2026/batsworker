@@ -251,6 +251,100 @@ def test_ignoreUntil_is_honoured_as_the_old_spelling(tmp_path):
     assert "lapses 2027-03-01" in out
 
 
+# --- --check-expiry: a close date must red the PR gate, not just warn ---------
+
+
+def test_check_expiry_fails_when_lapsing_within_window(tmp_path):
+    """The PR gate passes --check-expiry 30; an acceptance 45 days out is inside
+    the 90-day warning window but outside the 30-day fail window, so warn not fail."""
+    make_root(
+        tmp_path,
+        config=(
+            '[[IgnoredVulns]]\nid = "GHSA-wrw7-89jp-8q8g"\n'
+            'reason = "gtk pins glib ^0.18."\n'
+            "effectiveUntil = 2027-03-01\n"
+        ),
+        cargo=cargo_lock(("glib", "0.18.5")),
+    )
+    # 45 days before expiry: warning window (90), not fail window (30).
+    code, out = run(tmp_path, "--today", "2027-01-15", "--check-expiry", "30")
+    assert code == 0, out
+    assert "::warning" in out
+    assert "::error" not in out
+
+
+def test_check_expiry_fails_when_lapsing_within_window_default(tmp_path):
+    """--check-expiry with no argument defaults to 30 days: 20 days out fails."""
+    make_root(
+        tmp_path,
+        config=(
+            '[[IgnoredVulns]]\nid = "GHSA-wrw7-89jp-8q8g"\n'
+            'reason = "gtk pins glib ^0.18."\n'
+            "effectiveUntil = 2027-03-01\n"
+        ),
+        cargo=cargo_lock(("glib", "0.18.5")),
+    )
+    code, out = run(tmp_path, "--today", "2027-02-09", "--check-expiry")
+    assert code == 1, out
+    assert "::error" in out
+    assert "re-argue or upgrade" in out
+
+
+def test_check_expiry_fails_when_already_lapsed(tmp_path):
+    """A lapsed acceptance must fail the PR gate too (osv-scanner would surface
+    it as a finding; here it is caught at pull-request time, not next Monday)."""
+    make_root(
+        tmp_path,
+        config=(
+            '[[IgnoredVulns]]\nid = "GHSA-wrw7-89jp-8q8g"\n'
+            'reason = "gtk pins glib ^0.18."\n'
+            "effectiveUntil = 2027-03-01\n"
+        ),
+        cargo=cargo_lock(("glib", "0.18.5")),
+    )
+    code, out = run(tmp_path, "--today", "2027-03-02", "--check-expiry", "30")
+    assert code == 1, out
+    assert "::error" in out
+    assert "re-argue or upgrade before it goes red" in out
+    assert "-1 day(s) away" in out  # a negative count is the lapsed signal
+
+
+def test_check_expiry_does_not_fail_when_quiet(tmp_path):
+    """A comfortably-future date stays green with --check-expiry set."""
+    make_root(
+        tmp_path,
+        config=(
+            '[[IgnoredVulns]]\nid = "GHSA-wrw7-89jp-8q8g"\n'
+            'reason = "gtk pins glib ^0.18."\n'
+            "effectiveUntil = 2027-03-01\n"
+        ),
+        cargo=cargo_lock(("glib", "0.18.5")),
+    )
+    code, out = run(tmp_path, "--today", "2026-06-01", "--check-expiry", "30")
+    assert code == 0, out
+    assert "::error" not in out
+    assert "::warning" not in out
+
+
+def test_check_expiry_is_opt_in_no_behaviour_change(tmp_path):
+    """Without the flag, the existing warning-but-green semantics must not change.
+    This is the compatibility tripwire for the suppression-register job."""
+    make_root(
+        tmp_path,
+        config=(
+            '[[IgnoredVulns]]\nid = "GHSA-wrw7-89jp-8q8g"\n'
+            'reason = "gtk pins glib ^0.18."\n'
+            "effectiveUntil = 2027-03-01\n"
+        ),
+        cargo=cargo_lock(("glib", "0.18.5")),
+    )
+    # 20 days out: inside the 90-day warning window.
+    code, out = run(tmp_path, "--today", "2027-02-09")
+    assert code == 0, out
+    assert "::warning" in out
+    assert "::error" not in out
+
+
 # --- the version comparison itself ------------------------------------------
 
 
