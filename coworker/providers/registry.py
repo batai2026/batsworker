@@ -28,6 +28,7 @@ from .gemini_provider import GeminiProvider
 from .openai_provider import OpenAIProvider
 from .openai_responses import OpenAIResponsesProvider
 from .vertex_provider import VertexProvider
+from ..net_trust import trust_context
 
 DEFAULT_OLLAMA_URL = "http://localhost:11434"
 
@@ -976,22 +977,29 @@ def verify_provider_key(
         return _verify_bedrock(fields or {}, timeout)
     if name == "vertex":
         return _verify_vertex(fields or {}, timeout)
+    # Same trust anchor as the real provider clients — certifi ∪ OS store — so a
+    # private-CA endpoint tests green here and then works at call time (see
+    # coworker/net_trust.py). Without this the Settings "Test" button failed on the
+    # very endpoints that had just been fixed.
+    verify = trust_context()
     try:
         if name == "anthropic":
             resp = httpx.get(
                 "https://api.anthropic.com/v1/models",
                 headers={"x-api-key": key, "anthropic-version": "2023-06-01"},
                 timeout=timeout,
+                verify=verify,
             )
         elif name == "gemini":
             resp = httpx.get(
                 "https://generativelanguage.googleapis.com/v1beta/models",
                 params={"key": key},
                 timeout=timeout,
+                verify=verify,
             )
         elif name == "ollama":
             base = _normalize_ollama_url(base_url)
-            resp = httpx.get(base.rstrip("/") + "/models", timeout=timeout)
+            resp = httpx.get(base.rstrip("/") + "/models", timeout=timeout, verify=verify)
         elif name in ("ark", "ark-agent-plan-cn"):
             default_base = next(
                 (f.default for f in d.fields if f.key == "base_url" and f.default), ""
@@ -1007,6 +1015,7 @@ def verify_provider_key(
                     "store": False,
                 },
                 timeout=timeout,
+                verify=verify,
             )
         else:  # openai + any OpenAI-compatible endpoint (Azure, OpenRouter, vendors, vLLM…)
             default_base = next(
@@ -1021,6 +1030,7 @@ def verify_provider_key(
                 base + "/models",
                 headers={"Authorization": f"Bearer {key}"},
                 timeout=timeout,
+                verify=verify,
             )
     except (httpx.HTTPError, OSError, ValueError) as exc:  # DNS/connection/timeout — never bubble to a 500
         return {
