@@ -24,6 +24,12 @@ jobs:
         run: pip install "ruff>=0.17.3"
       - name: Ruff
         run: ruff check coworker tests scripts
+      - name: Lockfiles carry artifact hashes
+        # F-c5e5c266: requirements-*.lock are exported from uv.lock and pip installs
+        # from them, so a --no-hashes export would silently drop artifact pinning.
+        # Structural check (hashes present on every distribution), not a recompute:
+        # verifying the hashes themselves is pip's job at install time.
+        run: python scripts/check_lock_hashes.py
 
   # Python type gate: a ratchet, not a zero-error threshold. tools/typecheck.py fails
   # only when the error count grows or a currently-clean file acquires an error, so this
