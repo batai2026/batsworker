@@ -8,10 +8,10 @@ version = "1.0.6"
 description = "Agent coworker platform — provider-agnostic agentic coworker runtime"
 requires-python = ">=3.10"
 dependencies = [
-    "openai>=3.58.0",
-    "anthropic>=2.13.0",  # native Claude Messages API provider
+    "openai>=1.0",
+    "anthropic>=0.40",  # native Claude Messages API provider
     "google-genai>=1.0",  # native Gemini provider
-    "google-auth>=2.63.1",  # Vertex credentials (service account / ADC / MaaS bearer)
+    "google-auth>=2.23",  # Vertex credentials (service account / ADC / MaaS bearer)
     "textual>=1.0",
     "fastapi>=0.110",
     "uvicorn[standard]>=0.54.0",
@@ -22,8 +22,8 @@ dependencies = [
     # depend on GitHub reachability.
     "aisuite>=0.2.0,<0.3",
     "docstring_parser",
-    "pyyaml>=6.0.4",  # persona manifest frontmatter (YAML)
-    "pydantic>=2.14.4",
+    "pyyaml>=6",  # persona manifest frontmatter (YAML)
+    "pydantic>=2",
     "mcp>=1.28.1,<2",  # MCP client (stdio + streamable-http); floor >=1.28.1 avoids PYSEC-2026-3481/3482/3483 (fixed in 1.27.2/1.28.1); <2 since 2.0.0 removed streamablehttp_client
     "httpx>=0.27",  # sync outbound senders for messaging connectors (send_message tool)
     "websockets>=13",  # managed Slack relay client transport (relay_client.py)
@@ -39,7 +39,7 @@ dependencies = [
     # models without native PDF support. 6.21.4 closes every advisory in that
     # cluster; <7 keeps us on the line the suite is verified against instead of
     # taking an untested major.
-    "pypdf>=6.21.4,<7",
+    "pypdf>=7.1.1,<8",
     "pypdfium2>=4",
     # IANA tz database for zoneinfo. Windows ships no system tz db, so without this every
     # named schedule timezone (UTC, Asia/Kolkata, …) silently falls back to local time.
@@ -55,7 +55,7 @@ dev = [
     "pytest>=8",
     "pytest-asyncio",
     "httpx",
-    "ruff>=0.17.6",
+    "ruff>=0.17.3",
     "pytest-cov>=6",
     "mypy>=1.13",
 ]
@@ -64,9 +64,9 @@ dev = [
 # drives the real handler) — declare it so CI installs it, not just transitively.
 messaging = ["python-telegram-bot>=21", "slack-bolt>=1.18", "aiohttp>=3.9"]
 # Interactive Cowork browser automation.
-browser = ["playwright>=1.65.2"]
+browser = ["playwright>=1.44"]
 # AWS Bedrock provider (lazy-imported; desktop builds bundle it, pip users opt in).
-bedrock = ["boto3>=1.44.9"]
+bedrock = ["boto3>=1.34"]
 # Packaging toolchain for a release build. `typer` is build-time only: PyInstaller walks
 # the `mcp` package and `mcp.cli` calls sys.exit() at import when typer is absent.
 build = ["pyinstaller>=6", "typer"]
