@@ -40,19 +40,35 @@ changing dependencies).
 
 ## What CI runs
 
-`.github/workflows/ci.yml` runs on every push and pull request. These are the
-jobs your PR has to keep green — reproduce them locally before you push and you
-will not be surprised.
+`.github/workflows/` runs on every push and pull request. These are the jobs
+your PR has to keep green — reproduce them locally before you push and you
+will not be surprised. The same 13 jobs are the merge gate on `main`; their
+whys (why each is required, why some deliberately are not) live in
+[docs/branch-protection.md](docs/branch-protection.md). A new job must be added
+here *and* in that file — both documents record the same set.
 
 | Job | Command | Notes |
 |---|---|---|
 | `lint` | `ruff check coworker tests scripts` | Rules pinned to `E4, E7, E9, F` in `pyproject.toml`; three modules carry a deliberate `E402` waiver |
-| `pytest` (Linux) | `pytest tests -q --cov --cov-report=term` | Installs `requirements-dev.lock` + `pip install -e . --no-deps` |
+| `typecheck` | `python tools/typecheck.py` | mypy ratchet — fails on regressions, not on the standing baseline |
+| `pytest (3.12)` | `pytest tests -q --cov --cov-report=term` | The floor interpreter; installs `requirements-dev.lock` + `pip install -e . --no-deps` |
+| `pytest (3.15)` | same | The shipped interpreter |
 | `pytest-windows` | same | Windows-only breakage happens (`time.tzset`, UTF-8 decoding, PowerShell quoting). Blocking on purpose |
 | `docker-image` | `docker build -t openworker:ci .`, then `scripts/check_container_state_isolation.py` inside it | The image layout is a security boundary — state must not land in `/workspace` |
-| `gui-unit` (+ Windows) | `npm ci`, `npx tsc --noEmit`, `npm test` | Plus `python surfaces/gui/scripts/check_i18n.py` |
+| `gui-unit` | `npm ci`, `npx tsc --noEmit`, `npm test` | Plus `python surfaces/gui/scripts/check_i18n.py` |
+| `gui-unit-windows` | same | Vitest on Windows, where quote/encoding breakage differs |
 | `gui-e2e` | `npm run e2e` | Hermetic Playwright: mocked `/v1` and WebSocket, no model or network |
 | `rust` | `cargo clippy --all-targets -- -D warnings`, `cargo test --manifest-path stt/Cargo.toml` | Builds the SPA first; `-D warnings` means clippy lints fail the build |
+| `gate-stub` | `python -m coworker.eval.matrix --case evals/ci-case --stub --check-baseline` | Deterministic stub eval baseline; real-model matrix is manual (`workflow_dispatch`) |
+| `new-vulnerabilities / osv-scan` | `osv-scanner` against the PR's added vulns | Dependency delta — fails only on advisories the PR *adds*, not the accepted backlog |
+| `suppression-register` | `python scripts/check_suppressions.py --check-expiry 30` + register drift check | Dead/stale `osv-scanner.toml` exemptions, expiry within 30 days, and the expiry register matching config |
+
+The 13 job names above are exactly the *required check* names on `main`'s
+branch protection — including the matrix-expanded context strings
+(`pytest (3.12)`, `/ osv-scan`). A new job must be added here *and* in
+[docs/branch-protection.md](docs/branch-protection.md) — both documents record
+the same set, and a drift between them is the failure AGENTS.md §3.2 exists
+to prevent.
 
 Locally, from the repo root with `.venv` active:
 

@@ -30,15 +30,24 @@ exists partly to force that review when an entry is added without one.
 
 WHAT THIS DOES NOT DO. It does not re-litigate whether an acceptance is
 *justified* -- whether the crate is reachable on a shipped platform. That is a
-judgement per entry, written down in the reason text. It does not verify
-`effectiveUntil` has not lapsed (osv-scanner enforces that itself); it only
-warns when a date is close.
+judgement per entry, written down in the reason text.
+
+LAPSE CHECKING. Without flags, a date that is close is a warning, not a
+failure: the acceptance is still valid today, and blocking would red a push
+that changed nothing. Pass `--check-expiry [DAYS]` (default 30) to fail
+instead -- that is what the PR gate uses, so an acceptance that expires soon
+(or has already lapsed) turns the pull request red rather than waiting for the
+weekly full-backlog scan. osv-scanner itself makes a lapsed date reappear as a
+finding; this makes it visible on the PR instead of next Monday.
 
 Usage:
     python scripts/check_suppressions.py [--root .] [--json]
+    python scripts/check_suppressions.py --check-expiry [DAYS]
+    python scripts/check_suppressions.py --markdown docs/dependency-risk-register.md
 
-Exits 0 when every suppression still maps to a live, affected package, 1 when
-any is dead or unmapped, 2 on unreadable input.
+Exits 0 when every suppression still maps to a live, affected package and none
+is expiring within the `--check-expiry` window, 1 otherwise, 2 on unreadable
+input.
 """
 
 from __future__ import annotations
@@ -333,7 +342,7 @@ def audit(entries: list[dict], pins_by_eco: dict[str, list[Pinned]],
     return reports
 
 
-def render(reports: list[EntryReport]) -> str:
+def render(reports: list[EntryReport], fail_window: int | None = None) -> str:
     dead = [r for r in reports if r.status == "dead"]
     unmapped = [r for r in reports if r.status == "unmapped"]
     alive = [r for r in reports if r.status == "alive"]
@@ -379,13 +388,31 @@ def render(reports: list[EntryReport]) -> str:
             lines.append(f"  {report.id:<24} {report.package}{when}")
         lines.append("")
 
-    # A date that is close to lapsing is a warning, not a failure: the acceptance
-    # is still valid today, and blocking here would red a push that changed
-    # nothing. full-backlog turns it into a red run on schedule.
+    # A date that is close to lapsing is a warning, not a failure, unless
+    # --check-expiry is set: the acceptance is still valid today, and blocking
+    # here would red a push that changed nothing. The PR gate passes
+    # --check-expiry so an acceptance running out of runway turns the PR red
+    # instead of waiting for the weekly full-backlog scan (which hard-fails on
+    # a lapsed date via osv-scanner itself).
+    failing = [r for r in reports
+               if r.days_left is not None
+               and (fail_window is not None and r.days_left <= fail_window)]
+    for report in failing:
+        print(f"::error file=osv-scanner.toml,title={report.id} expires soon"
+              f"::{report.id} ({report.package}) lapses "
+              f"{report.effective_until}, {report.days_left} day(s) away "
+              f"-- re-argue or upgrade before it goes red")
+    # Inside the wide warning window but outside the fail window: still warn,
+    # just do not fail -- there is runway left, and the PR gate should only
+    # force action inside its stated window.
+    failing_ids = {r.id for r in failing}
     for report in near:
+        if report.id in failing_ids:
+            continue
         print(f"::warning file=osv-scanner.toml,title={report.id} expires soon"
-              f"::{report.id} ({report.package}) lapses {report.effective_until}, "
-              f"{report.days_left} day(s) away -- re-argue or upgrade")
+              f"::{report.id} ({report.package}) lapses "
+              f"{report.effective_until}, {report.days_left} day(s) away "
+              f"-- re-argue or upgrade")
     return "\n".join(lines).rstrip() + "\n"
 
 
@@ -452,6 +479,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--config", default="osv-scanner.toml",
                         help="suppression file, relative to --root")
     parser.add_argument("--today", help="override today's date (YYYY-MM-DD), for tests")
+    parser.add_argument("--check-expiry", nargs="?", const=30, type=int, metavar="DAYS",
+                        default=None,
+                        help="fail (exit 1) when an acceptance lapses within DAYS "
+                             "(default 30, or already lapsed); without this flag a "
+                             "close date is only a warning")
     parser.add_argument("--json", action="store_true", help="emit machine-readable output")
     parser.add_argument("--markdown", metavar="PATH",
                         help="write the expiry register to PATH (and check nothing else)")
@@ -518,9 +550,15 @@ def main(argv: list[str] | None = None) -> int:
                  "daysLeft": r.days_left}
                 for r in reports], "today": today.isoformat()}, indent=2))
     else:
-        sys.stdout.write(render(reports))
+        sys.stdout.write(render(reports, fail_window=args.check_expiry))
 
-    return 1 if any(r.status in ("dead", "unmapped") for r in reports) else 0
+    if any(r.status in ("dead", "unmapped") for r in reports):
+        return 1
+    if args.check_expiry is not None and any(
+            r.days_left is not None and r.days_left <= args.check_expiry
+            for r in reports):
+        return 1
+    return 0
 
 
 if __name__ == "__main__":
