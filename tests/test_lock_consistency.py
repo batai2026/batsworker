@@ -111,6 +111,11 @@ class TestMainDiscriminates:
             return clc.subprocess.CompletedProcess(argv, 0, stdout="", stderr="")
 
         monkeypatch.setattr(clc.subprocess, "run", fake_export)
+        # This test suite runs in the pytest matrix jobs, which do not install
+        # uv (only the lint job does, where the real check runs). main() refuses
+        # to run without uv on PATH (exit 2), so fake its presence here -- the
+        # export subprocess itself is already monkeypatched above.
+        monkeypatch.setattr(clc.shutil, "which", lambda name: "uv" if name == "uv" else None)
         return clc.main(["--root", str(tmp_path)])
 
     def test_consistent_lock_passes(self, tmp_path, monkeypatch) -> None:
