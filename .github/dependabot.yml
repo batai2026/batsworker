@@ -11,12 +11,12 @@
 # reachability rules; turning those into Dependabot security PRs would swap that
 # judgement for a severity-only view.
 #
-# Deliberately absent: a "uv" entry for the Python graph. uv.lock exists and is
-# consistent (`uv lock --check` passes), but CI never reads it -- the CI installs
-# requirements-dev.lock, which is `uv export`ed from uv.lock by hand. Dependabot can
-# rewrite uv.lock but cannot re-run that export, so every PR it opened would touch a
-# file the gate does not install from: green CI, unchanged runtime. Python bumps stay
-# manual until the export step is automated (tracked in SECURITY.md's open items).
+# Python: uv.lock is the source of truth; requirements-*.lock are `uv export`ed from
+# it and are what CI installs. The pairing is now enforced, not assumed:
+# scripts/check_lock_consistency.py re-runs each lockfile's recorded export against
+# uv.lock on every PR, so a Dependabot PR that bumps a version must carry the paired
+# re-export -- one without it turns the gate red instead of shipping a green CI with
+# an unchanged runtime. Minor + patch are grouped; majors land as their own PR.
 
 version: 2
 updates:
@@ -85,3 +85,17 @@ updates:
     commit-message:
       prefix: "deps"
     open-pull-requests-limit: 3
+
+  # The Python dependency graph (uv.lock at the repo root).
+  - package-ecosystem: "uv"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    groups:
+      uv-minor-patch:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+    commit-message:
+      prefix: "deps"
+    open-pull-requests-limit: 5
