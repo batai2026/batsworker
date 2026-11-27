@@ -34,12 +34,74 @@ export type DictationDownloadProgress = {
   total_bytes: number;
 };
 
+// A rejected `invoke` is the ONLY signal that a capability is missing, a command is
+// unregistered, or the IPC bridge is broken -- without it the UI just does nothing
+// (owner report 2026-11-21: "clicked Choose folder, no reaction, no error"). Log the
+// first failure per command, then stay quiet: `dictation_level` polls at ~10Hz and
+// would otherwise flood the console with the same rejection.
+//
+// The console alone is not enough: release builds compile no devtools
+// (src-tauri/Cargo.toml enables only `tray-icon`), so nobody can open devtools in
+// the shipped app. The same first failure is therefore also POSTed to the sidecar,
+// which appends it to `ui_events.jsonl` in the state dir -- a file a user CAN find
+// and attach to a bug report.
+const reportedFailures = new Set<string>();
+
+const UI_LOG_ENDPOINT = "/v1/ui/log";
+
+/** Send one diagnostic to the sidecar. Deliberately fire-and-forget.
+ *
+ *  Must never throw and never recurse: this runs from `invoke`'s failure path, so a
+ *  throw here would surface as an unhandled rejection, and routing it back through
+ *  `invoke`-style reporting would loop. `globalThis.fetch` is used directly rather
+ *  than the ./api wrapper because importing ./api from here would be a cycle
+ *  (api.ts is statically imported by App.tsx, which imports tauri.ts). */
+function reportToSidecar(payload: Record<string, unknown>): void {
+  try {
+    const base = (globalThis as any).__COWORKER_HTTP__;
+    const token = (globalThis as any).__COWORKER_API_TOKEN__;
+    // Without the injected endpoint we are not inside the desktop shell; nothing to
+    // deliver to, and guessing a port would be worse than dropping the entry.
+    if (!base || typeof globalThis.fetch !== "function") return;
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    if (token) headers["X-OpenWorker-Token"] = String(token);
+    void globalThis
+      .fetch(`${String(base).replace(/\/$/, "")}${UI_LOG_ENDPOINT}`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ events: [payload] }),
+      })
+      .catch(() => {
+        /* the log is an observer; its failure must stay invisible */
+      });
+  } catch {
+    /* never let diagnostics break the caller */
+  }
+}
+
 const invoke = async <T>(cmd: string, args?: Record<string, unknown>): Promise<T | null> => {
   const tauri = (globalThis as any).__TAURI__;
   if (!tauri?.core?.invoke) return null;
   try {
     return (await tauri.core.invoke(cmd, args)) as T;
-  } catch {
+  } catch (err) {
+    if (!reportedFailures.has(cmd)) {
+      reportedFailures.add(cmd);
+      console.error(`[tauri] invoke("${cmd}") failed; treating it as unavailable`, err);
+      reportToSidecar({
+        command: cmd,
+        level: "error",
+        message:
+          err instanceof Error
+            ? err.message
+            : typeof err === "string"
+              ? err
+              : JSON.stringify(err),
+        stack: err instanceof Error ? err.stack ?? undefined : undefined,
+        origin: typeof location !== "undefined" ? location.origin : undefined,
+        platform: platformOS(),
+      });
+    }
     return null;
   }
 };
@@ -63,6 +125,18 @@ export async function chooseFolder(): Promise<string | null> {
   if (isTauri()) return pickFolder();
   const { pickFolderViaServer } = await import("./api");
   return pickFolderViaServer();
+}
+
+/** Save the diagnostics text through the OS save dialog (desktop only).
+ *
+ *  Returns the chosen path, or null when the user cancelled -- cancelling is a
+ *  normal outcome, not an error, so it must not look like a failure in the UI.
+ *  The bytes are produced by the sidecar (`/v1/ui/log/export`); this command only
+ *  picks a destination, which is why it can never write somewhere the user did
+ *  not approve. */
+export async function saveDiagnostics(contents: string, filename: string): Promise<string | null> {
+  const path = await invoke<string>("save_diagnostics", { contents, filename });
+  return typeof path === "string" && path ? path : null;
 }
 
 /** Open-at-login (macOS LaunchAgent). */

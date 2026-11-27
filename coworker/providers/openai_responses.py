@@ -46,6 +46,7 @@ from .base import (
 )
 from .capabilities import capabilities_for
 from .openai_provider import resolve_api_key
+from ..net_trust import trust_client
 
 # Request params passed through from model settings; everything else (frequency_penalty,
 # reasoning_effort — no effort knob in v1, the server default rides) is dropped.
@@ -340,6 +341,8 @@ class OpenAIResponsesProvider(ProviderClient):
             kwargs = {"api_key": key}
             if self._base_url:
                 kwargs["base_url"] = self._base_url
+            # Same trust anchor as the Chat Completions path (see coworker/net_trust.py).
+            kwargs["http_client"] = trust_client()
             self._client = OpenAI(**kwargs)
         return self._client
 

@@ -30,7 +30,13 @@ def test_base_url_passed_to_sdk(monkeypatch):
     OpenAIProvider(
         api_key="ollama", base_url="http://localhost:11434/v1"
     )._ensure_client()
+    # `http_client` carries the certifi ∪ OS-store trust anchor now; the rest of the
+    # kwargs must still match exactly (see coworker/net_trust.py).
+    http_client = captured.pop("http_client", None)
     assert captured == {"api_key": "ollama", "base_url": "http://localhost:11434/v1"}
+    from openai import DefaultHttpxClient
+
+    assert isinstance(http_client, DefaultHttpxClient)
 
 
 def test_base_url_omitted_when_none(monkeypatch):

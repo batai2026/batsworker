@@ -24,6 +24,23 @@ jobs:
         run: pip install "ruff>=0.17.3"
       - name: Ruff
         run: ruff check coworker tests scripts
+      # The consistency check shells out to `uv`, so install it here (same job)
+      # rather than adding a third-party setup action. `uv` is a single binary
+      # from PyPI; pinning it via pip keeps this job's supply chain limited to
+      # actions that Dependabot already maintains.
+      - name: Install uv (for lockfile export checks)
+        run: pip install "uv>=0.5"
+      - name: Lockfiles carry artifact hashes
+        # F-c5e5c266: requirements-*.lock are exported from uv.lock and pip installs
+        # from them, so a --no-hashes export would silently drop artifact pinning.
+        # Structural check (hashes present on every distribution), not a recompute:
+        # verifying the hashes themselves is pip's job at install time.
+        run: python scripts/check_lock_hashes.py
+      - name: Lockfiles are current exports of uv.lock
+        # F-12b408df: requirements-*.lock are exported from uv.lock; Dependabot's
+        # uv entry now edits uv.lock, and this re-runs each lockfile's recorded
+        # export so a dependency bump that forgot the paired re-export turns red.
+        run: python scripts/check_lock_consistency.py
 
   # Python type gate: a ratchet, not a zero-error threshold. tools/typecheck.py fails
   # only when the error count grows or a currently-clean file acquires an error, so this

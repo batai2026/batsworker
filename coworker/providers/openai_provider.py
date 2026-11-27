@@ -23,6 +23,7 @@ from .base import (
     ToolCall,
 )
 from .capabilities import capabilities_for
+from ..net_trust import trust_client
 
 
 def resolve_api_key(secrets: Any = None) -> Optional[str]:
@@ -175,6 +176,10 @@ class OpenAIProvider(ProviderClient):
             kwargs: dict[str, Any] = {"api_key": key}
             if self._base_url:
                 kwargs["base_url"] = self._base_url
+            # Verify against certifi ∪ OS store, so an internal endpoint signed by a
+            # private CA (installed into the Windows `CA` store) works while public
+            # providers keep their roots. See `coworker/net_trust.py` for the evidence.
+            kwargs["http_client"] = trust_client()
             self._client = OpenAI(**kwargs)
         return self._client
 

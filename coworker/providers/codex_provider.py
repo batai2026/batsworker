@@ -26,6 +26,7 @@ from .codex_auth import (
     backend_headers,
 )
 from .openai_responses import OpenAIResponsesProvider
+from ..net_trust import trust_client
 
 
 def _status_code(exc: Exception) -> Optional[int]:
@@ -72,6 +73,8 @@ class CodexProvider(OpenAIResponsesProvider):
                 api_key=token,
                 base_url=CODEX_BASE_URL,
                 default_headers=backend_headers(account, self._session_id),
+                # Same trust anchor as the API-key paths (see coworker/net_trust.py).
+                http_client=trust_client(),
             )
             self._client_token = token
         return self._client

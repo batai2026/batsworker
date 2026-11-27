@@ -377,6 +377,42 @@ async fn pick_folder(app: tauri::AppHandle) -> Option<String> {
     rx.recv().ok().flatten().map(|fp| fp.to_string())
 }
 
+/// Save the diagnostics report the SPA fetched from the sidecar.
+///
+/// Why the bytes travel through Rust instead of the page writing them: the page
+/// is served over http with a strict CSP, and a browser download lands in
+/// ~/Downloads with no choice of name. "Export" in a desktop app should mean
+/// "pick where it goes". The destination is chosen by the OS dialog, so this
+/// command cannot be steered to an arbitrary path by the caller.
+///
+/// Returns the chosen path, or null when the user cancelled.
+#[tauri::command]
+async fn save_diagnostics(app: tauri::AppHandle, contents: String, filename: String) -> Option<String> {
+    use tauri_plugin_dialog::DialogExt;
+
+    // Strip any directory part in case a caller passes one anyway: the dialog
+    // proposes a name, it never dictates a location.
+    let suggested = std::path::Path::new(&filename)
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("openworker-diagnostics.txt")
+        .to_string();
+
+    let (tx, rx) = std::sync::mpsc::channel();
+    app.dialog()
+        .file()
+        .set_file_name(&suggested)
+        .add_filter("Text", &["txt"])
+        .save_file(move |p| {
+            let _ = tx.send(p);
+        });
+    let target = rx.recv().ok().flatten()?;
+
+    let path = target.to_string();
+    std::fs::write(&path, contents).ok()?;
+    Some(path)
+}
+
 #[tauri::command]
 fn get_autostart(app: tauri::AppHandle) -> bool {
     app.autolaunch().is_enabled().unwrap_or(false)
@@ -904,6 +940,7 @@ pub fn run() {
         ))
         .invoke_handler(tauri::generate_handler![
             pick_folder,
+            save_diagnostics,
             get_autostart,
             set_autostart,
             get_keep_awake,

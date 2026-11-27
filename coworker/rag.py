@@ -26,6 +26,8 @@ import threading
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
+from .net_trust import trust_context
+
 # Text formats worth indexing. Everything else (binaries, notebooks, archives)
 # is skipped — chunking them produces noise, not knowledge.
 TEXT_EXTENSIONS = {
@@ -117,11 +119,16 @@ class EmbeddingClient:
     def embed(self, texts: List[str]) -> List[List[float]]:
         import httpx
 
+        # `embedding_base_url` is user config, so it can be an internal host behind a
+        # private CA (exactly what broke `deepseek_v4`). A bare `httpx.post` resolves
+        # the store on its own — certifi-only whenever `SSL_CERT_FILE` is set — so ask
+        # for the shared certifi ∪ OS-store context explicitly.
         resp = httpx.post(
             f"{self.base_url}/embeddings",
             headers={"Authorization": f"Bearer {self.api_key}"},
             json={"model": self.model, "input": texts},
             timeout=self.timeout,
+            verify=trust_context(),
         )
         resp.raise_for_status()
         data = resp.json().get("data", [])
