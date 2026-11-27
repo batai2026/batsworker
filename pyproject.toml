@@ -14,7 +14,7 @@ dependencies = [
     "google-auth>=2.23",  # Vertex credentials (service account / ADC / MaaS bearer)
     "textual>=1.0",
     "fastapi>=0.110",
-    "uvicorn[standard]>=0.27",
+    "uvicorn[standard]>=0.54.0",
     # aisuite (agents/toolkits/tracing). 0.1.x on PyPI predates the agents layer
     # this repo imports (`aisuite.agents`, ToolMetadata/tool); 0.2.0 is the first
     # release that carries it. Previously pinned to a git commit whose tree is
@@ -39,7 +39,7 @@ dependencies = [
     # models without native PDF support. 6.21.4 closes every advisory in that
     # cluster; <7 keeps us on the line the suite is verified against instead of
     # taking an untested major.
-    "pypdf>=6.21.4,<7",
+    "pypdf>=7.1.1,<8",
     "pypdfium2>=4",
     # IANA tz database for zoneinfo. Windows ships no system tz db, so without this every
     # named schedule timezone (UTC, Asia/Kolkata, …) silently falls back to local time.
