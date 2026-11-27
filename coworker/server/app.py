@@ -24,6 +24,7 @@ from .routes.attachments_messaging import build_attachments_messaging_router
 from .routes.automations import build_automations_router
 from .routes.cloud import build_cloud_router
 from .routes.connectors import build_connectors_router
+from .routes.diagnostics import build_diagnostics_router
 from .routes.inbox import build_inbox_router
 from .routes.mcp import build_mcp_router
 from .routes.memory import build_memory_router
@@ -143,6 +144,9 @@ def create_app(manager: SessionManager) -> FastAPI:
 
     # -- audit / browser observability ------------------------------------------
     app.include_router(build_observability_router(manager))
+
+    # -- webview diagnostics (where SPA-side failures land) ----------------------
+    app.include_router(build_diagnostics_router(manager))
 
     # -- model providers (OpenAI, Ollama, …) ------------------------------------
     app.include_router(build_providers_router(manager))

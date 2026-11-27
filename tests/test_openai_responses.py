@@ -33,10 +33,19 @@ def test_responses_custom_base_url_reaches_sdk(monkeypatch):
 
     provider._ensure_client()
 
+    # `http_client` is now part of the contract (trust anchor, see
+    # `coworker/net_trust.py`). Pop it so the remaining kwargs are still compared
+    # exactly — an unexpected extra kwarg must still fail this test.
+    http_client = captured.pop("http_client", None)
     assert captured == {
         "api_key": "ark-key",
         "base_url": "https://ark.example/api/v3",
     }
+    from openai import DefaultHttpxClient
+
+    assert isinstance(http_client, DefaultHttpxClient), (
+        "expected the SDK's default client; a bare httpx.Client would cut reads to 5s"
+    )
 
 
 def test_stock_openai_responses_path_unchanged(monkeypatch):
@@ -52,7 +61,12 @@ def test_stock_openai_responses_path_unchanged(monkeypatch):
 
     provider._ensure_client()
 
+    # See test_responses_custom_base_url_reaches_sdk: http_client is contractual.
+    http_client = captured.pop("http_client", None)
     assert captured == {"api_key": "openai-key"}
+    from openai import DefaultHttpxClient
+
+    assert isinstance(http_client, DefaultHttpxClient)
 
 # -- fakes ------------------------------------------------------------------------
 

@@ -8,6 +8,7 @@ import {
   getSandboxSettings,
   getSecurityFindings,
   getThreatModel,
+  fetchDiagnosticsReport,
   removeEgressDomain,
   revealThreatModel,
   saveThreatModel,
@@ -22,6 +23,7 @@ import {
   getDockerHostNetworking,
   getOpenShellVersion,
   isTauri,
+  saveDiagnostics,
   type DockerHostNetworkingStatus,
 } from "../tauri";
 import { useI18n } from "../i18n";
@@ -255,6 +257,12 @@ export function SecuritySection() {
           host-networking toggle. Both are read by the Tauri shell (browser builds have no
           direct view of the host), so the card is hidden outside the desktop app. */}
       {isTauri() && <DesktopSandboxChecks />}
+
+      {/* Diagnostics export: when a feature silently does nothing, the user needs to
+          hand us evidence. The sidecar already keeps a whitelisted log of failed
+          webview commands; this is the only way to get it off the machine, since
+          release builds have no devtools. */}
+      <DiagnosticsCard />
 
       {/* Egress policy (P0): persistent allowlist of network destinations that
           request_egress adds once the user approves. Approved domains auto-run. */}
@@ -495,6 +503,72 @@ function DesktopSandboxChecks() {
           <div className="text-[11px] text-faint font-mono truncate">{docker.settings_path}</div>
         )}
       </div>
+    </div>
+  );
+}
+
+// Export the sidecar's webview-failure log as a file the user can attach to a bug
+// report. Release builds run without devtools, so without this a "the button does
+// nothing" report has no evidence behind it at all.
+//
+// Two destinations on purpose: the desktop shell opens the OS save dialog (the
+// user picks the location and can find the file afterwards), while a browser build
+// falls back to a download, which is the only thing a web page is allowed to do.
+function DiagnosticsCard() {
+  const { t } = useI18n();
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState<string | null>(null);
+
+  const exportLog = async () => {
+    setBusy(true);
+    setNote(null);
+    try {
+      const { text, filename } = await fetchDiagnosticsReport();
+
+      if (isTauri()) {
+        const saved = await saveDiagnostics(text, filename);
+        // Cancelling the save dialog is not a failure -- saying "exported" would
+        // be a lie, and an error would be noise. Stay quiet.
+        if (saved) setNote(t("Saved to {path}", { path: saved }));
+      } else {
+        const url = URL.createObjectURL(new Blob([text], { type: "text/plain" }));
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = filename;
+        a.click();
+        URL.revokeObjectURL(url);
+        setNote(t("Downloaded or shown in your browser's downloads."));
+      }
+    } catch (e) {
+      setNote(t("Export failed: {error}", { error: String(e) }));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className={CARD + " p-4 mb-4"} data-testid="diagnostics-card">
+      <div className="flex items-center gap-2">
+        <div className={FIELD_LABEL + " flex-1"}>{t("Diagnostics")}</div>
+        <button
+          className={BTN_BORDERED}
+          onClick={exportLog}
+          disabled={busy}
+          data-testid="export-diagnostics"
+        >
+          {busy ? t("Exporting…") : t("Export diagnostics")}
+        </button>
+      </div>
+      <div className={FIELD_HELP}>
+        {t(
+          "When a feature silently does nothing, export this log and attach it to your bug report. It lists failed desktop commands with timestamps — no file contents, no credentials.",
+        )}
+      </div>
+      {note && (
+        <div className="text-[12px] text-muted mt-2 break-all" data-testid="diagnostics-note">
+          {note}
+        </div>
+      )}
     </div>
   );
 }

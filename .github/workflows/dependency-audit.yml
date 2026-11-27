@@ -152,8 +152,8 @@ jobs:
 
       # Stdlib-only, like osv_delta.py: tomllib ships in 3.11+, and the 3.10
       # floor in pyproject.toml is handled by a tomli fallback inside the script.
-      - name: "Fail on suppressions the dependency graph has outgrown"
-        run: python scripts/check_suppressions.py
+      - name: "Fail on suppressions the dependency graph has outgrown, or expiring soon"
+        run: python scripts/check_suppressions.py --check-expiry 30
 
       - name: "The expiry register must match the config it describes"
         run: |
