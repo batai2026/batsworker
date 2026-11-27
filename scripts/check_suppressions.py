@@ -84,10 +84,14 @@ ADVISORIES: dict[str, dict] = {
     "rustsec-2026-0370": {"package": "zvariant", "ecosystem": "crates.io", "fixed_at": None},
     "rustsec-2026-0371": {"package": "zbus_names", "ecosystem": "crates.io", "fixed_at": None},
     "rustsec-2026-0372": {"package": "zvariant_derive", "ecosystem": "crates.io", "fixed_at": None},
-    # ReDoS; last_affected 4.0.7, and 4.0.7 is npm's latest (2026-08-24).
-    "ghsa-fc5q-39xc-vjpf": {"package": "picomatch", "ecosystem": "npm", "fixed_at": None},
     # Ids deleted on 2026-11-18, kept here so that re-adding one by hand is
     # reported as DEAD instead of UNMAPPED -- the message points at the reason.
+    # picomatch's row was added to this list on 2026-11-26: the advisory was
+    # WITHDRAWN upstream on 2026-11-18 ("not a security issue"), so no version is
+    # affected and there is nothing to fix. fixed_at stays None on purpose -- the
+    # withdrawal is not a fix, and if picomatch ever gets a real advisory it will
+    # have a new id and need a new row, not this one.
+    "ghsa-fc5q-39xc-vjpf": {"package": "picomatch", "ecosystem": "npm", "fixed_at": None},
     "ghsa-m665-v7pm-7grj": {"package": "zip", "ecosystem": "crates.io", "fixed_at": "9.0.5"},
     "ghsa-q7v9-x93c-xqv3": {"package": "zip", "ecosystem": "crates.io", "fixed_at": "9.0.0"},
     "ghsa-8hxf-qr8p-62x4": {"package": "zip", "ecosystem": "crates.io", "fixed_at": "9.0.0"},

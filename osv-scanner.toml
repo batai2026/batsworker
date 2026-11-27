@@ -152,13 +152,25 @@ effectiveUntil = 2027-08-01
 reason = "zvariant_derive 5.12.0 is unmaintained. Proc-macro sibling of zvariant, pulled by zvariant on the Linux D-Bus path; not in the windows build and not in any released artefact. No vulnerability and no fixed version. Fix is upstream in zbus/zvariant."
 
 # --- dev toolchain only (never in the bundle) ---
-
-[[IgnoredVulns]]
-id = "GHSA-fc5q-39xc-vjpf"
-# CVE-2026-112366, CVSS 8.7. Published 2026-10-19 but only surfaced here on
-# 2026-11-17T15:56:42Z (github_reviewed_at), when GitHub promoted it to a reviewed
-# advisory and OSV re-published it (modified=2026-11-17T16:00:03Z). That lands
-# between the last green audit (15:23) and the red one (16:05), so this is an
-# advisory-database change: no dependency moved.
-effectiveUntil = 2027-08-01
-reason = "picomatch ReDoS through single-branch repeated extglobs. Unfixable today: the advisory's last_affected is 4.0.7 and 4.0.7 IS the latest published version on npm (dist-tags.latest=4.0.7, newest publish 2026-08-24, no 4.0.8 in any channel), so there is no upgrade to take. Dev-only and not reachable from app input: every edge is in the vitest toolchain (surfaces/gui/package-lock.json: vite 8.3.8 and vitest 4.1.12 both pin picomatch 4.0.7, tinyglobby 0.2.17 rides 4.0.4, all dev), nothing here ships in the bundle, and the globs those tools evaluate are repo-controlled config patterns (include/exclude lists in vite.config), never attacker-supplied. Drop the entry when an upstream release moves off picomatch or picomatch ships a fix."
+#
+# GHSA-fc5q-39xc-vjpf (picomatch ReDoS, CVE-2026-112366) was accepted here from
+# 2026-11-17 to 2026-11-26 and is now DELETED, not re-dated. The advisory was
+# WITHDRAWN upstream on 2026-11-18T15:38:56Z ("not a security issue"; see
+# micromatch/picomatch#235) and OSV re-published it to say so. By then the entry
+# had already stopped doing anything: osv-scanner 2.7.1 reports withdrawn
+# advisories nowhere, so every scan printed "unused ignores:
+# GHSA-fc5q-39xc-vjpf" while `--config` filtered nothing.
+#
+# Do not re-add it on the strength of the advisory text alone -- check
+# `withdrawn` first (api.osv.dev/v1/vulns/<id>). Note that
+# scripts/check_suppressions.py cannot see a withdrawal at all: it judges from
+# ADVISORIES plus the lockfile, and picomatch 4.0.7 is still pinned with
+# fixed_at=None, so it keeps calling a withdrawn entry "alive". That blind spot
+# is why this had to be found by reading the scanner's own "unused ignores"
+# warning rather than by the checker.
+#
+# The two picomatch advisories still live at the time of writing
+# (GHSA-3v7f-55p6-f55p, GHSA-c2c7-rcm5-vvqj) are both patched at 4.0.4 and the
+# tree pins 4.0.7 through vite and vitest, so neither applies. A future
+# picomatch finding would be a new advisory with a new id and needs its own row
+# in check_suppressions.py, not this entry resurrected.
