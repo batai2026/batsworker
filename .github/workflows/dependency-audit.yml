@@ -197,7 +197,7 @@ jobs:
           echo "Base tree: $(git rev-parse --short HEAD)"
 
       - name: "Scan the base tree"
-        uses: google/osv-scanner-action/osv-scanner-action@0e457b42d0120153c352875e9b758b1e5c58c7e5 # v2.7.1
+        uses: google/osv-scanner-action/osv-scanner-action@d3c1414ded37de590f207572e37a7d180f1d0ef7 # v2.7.1
         # Exits non-zero both for "found vulnerabilities" and for "the scan broke",
         # so the outcome cannot be interpreted here. scripts/osv_delta.py refuses to
         # read a missing or malformed result file as "no new findings".
@@ -218,7 +218,7 @@ jobs:
           echo "Head tree: $(git rev-parse --short HEAD)"
 
       - name: "Scan the pushed tree"
-        uses: google/osv-scanner-action/osv-scanner-action@0e457b42d0120153c352875e9b758b1e5c58c7e5 # v2.7.1
+        uses: google/osv-scanner-action/osv-scanner-action@d3c1414ded37de590f207572e37a7d180f1d0ef7 # v2.7.1
         continue-on-error: true
         with:
           scan-args: |-
