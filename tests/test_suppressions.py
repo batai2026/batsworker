@@ -439,9 +439,21 @@ def test_every_live_entry_is_mapped():
 
 
 def test_live_repo_is_clean():
-    """The real tree must pass: 7 entries, all alive, exit 0."""
+    """The real tree must pass: every entry alive, nothing dead or unmapped.
+
+    Deliberately no assertion on the *number* of entries. The count is a fact about
+    today's debt, not an invariant, and pinning it means every legitimate deletion
+    (see 2026-11-26: a withdrawn advisory) has to be accompanied by an edit here,
+    which quietly turns this test into a change-detector. What must hold is the
+    status of each entry; the "report every entry" assertion is what keeps this
+    from passing vacuously on an empty config.
+    """
     code, out = run(ROOT, "--today", "2026-11-18")
     assert code == 0, out
-    assert "7 suppression(s)" in out
+    assert "suppression(s):" in out
     assert "0 dead" in out
     assert "0 unmapped" in out
+    # Non-vacuity: a config that suppresses nothing would satisfy the checks above.
+    n = len(cs.parse_entries((ROOT / "osv-scanner.toml").read_text(encoding="utf-8")))
+    assert n >= 1, "osv-scanner.toml has no [[IgnoredVulns]] at all"
+    assert f"{n} suppression(s)" in out, out

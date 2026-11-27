@@ -14,7 +14,6 @@ Every entry in `osv-scanner.toml` is debt with a due date. When an `effectiveUnt
 | 2027-08-01 | `RUSTSEC-2026-0370` | `zvariant` | zvariant 5.12.0 is unmaintained |
 | 2027-08-01 | `RUSTSEC-2026-0371` | `zbus_names` | zbus_names 4.3.2 is unmaintained |
 | 2027-08-01 | `RUSTSEC-2026-0372` | `zvariant_derive` | zvariant_derive 5.12.0 is unmaintained |
-| 2027-08-01 | `GHSA-fc5q-39xc-vjpf` | `picomatch` | picomatch ReDoS through single-branch repeated extglobs |
 
 ## Rotation
 
