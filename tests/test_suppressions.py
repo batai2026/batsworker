@@ -156,6 +156,61 @@ def test_prerelease_does_not_count_as_patched(tmp_path):
     assert code == 0, "a prerelease must not be judged patched\n" + out
 
 
+def test_withdrawn_advisory_is_its_own_status(tmp_path):
+    """picomatch's advisory was withdrawn 2026-11-18T15:38:56Z as "not a security
+    issue".
+
+    osv-scanner drops a withdrawn id and reports the entry as an unused ignore, but
+    this checker reads a static map, so with only `fixed_at: None` it saw an
+    unfixed advisory on a package that is still in the lockfile and called the
+    entry "alive" -- forever. Measured on 2026-11-28: re-adding this exact entry to
+    the live config exited 0, so the guard that was supposed to stop it (the
+    comment claiming "reported as DEAD") was decoration. A withdrawn id must fail
+    the build, not pass it.
+    """
+    make_root(
+        tmp_path,
+        config=(
+            '[[IgnoredVulns]]\nid = "GHSA-fc5q-39xc-vjpf"\n'
+            'reason = "there is nothing left to accept."\n'
+            "effectiveUntil = 2027-08-01\n"
+        ),
+        npm=npm_lock(("picomatch", "4.0.7")),
+    )
+    code, out = run(tmp_path, "--today", "2026-11-28")
+    assert code == 1, out
+    assert "WITHDRAWN" in out
+    assert "1 withdrawn" in out
+    assert "withdrawn on 2026-11-18T15:38:56Z" in out
+
+
+def test_withdrawn_status_wins_over_the_alive_path(tmp_path):
+    """The order matters: `fixed_at is None` plus a present package is the *alive*
+    case, so a withdrawn row that only sets fixed_at=None passes silently. The two
+    must disagree on the same fixture."""
+    make_root(
+        tmp_path,
+        config=(
+            '[[IgnoredVulns]]\nid = "GHSA-fc5q-39xc-vjpf"\n'
+            'reason = "x"\n'
+            "effectiveUntil = 2027-08-01\n"
+        ),
+        npm=npm_lock(("picomatch", "4.0.7")),
+    )
+    entries = cs.parse_entries((tmp_path / "osv-scanner.toml").read_text(encoding="utf-8"))
+    pins = {"npm": cs.load_pins(tmp_path, "npm")[0]}
+    statuses = [r.status for r in cs.audit(entries, pins, dt.date(2026, 11, 28))]
+    assert statuses == ["withdrawn"], statuses
+    # And the same entry is not counted as accepted debt in the register. Assert on
+    # the TABLE ROW, not on the bare name: the register's prose explains this very
+    # advisory by name, so "picomatch" appears in the file either way and a plain
+    # substring check would be green on a broken filter (it was, on the first try).
+    md = cs.render_markdown(cs.audit(entries, pins, dt.date(2026, 11, 28)),
+                            dt.date(2026, 11, 28))
+    rows = [ln for ln in md.splitlines() if ln.startswith("|")]
+    assert not any("picomatch" in row for row in rows), rows
+
+
 def test_unknown_advisory_id_is_unmapped(tmp_path):
     """The 21st entry was a comment string; a real unknown id must be named too."""
     make_root(
