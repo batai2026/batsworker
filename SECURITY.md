@@ -136,7 +136,7 @@ The app runs other people's code in the form of libraries, so here is what is
 actually automated today — stated plainly, gaps included:
 
 - `osv-scanner` runs on every pull request (failing only on advisories the PR *adds*)
-  and weekly against the full backlog. It reads `uv.lock`,
+  and daily (03:00 UTC) against the full backlog. It reads `uv.lock`,
   `surfaces/gui/package-lock.json`, `stt/Cargo.lock` and
   `surfaces/gui/src-tauri/Cargo.lock` — 1,334 packages in total at 1.0.6.
 - `osv-scanner.toml` holds the accepted-risk list. Each entry carries a code-path
@@ -153,7 +153,7 @@ actually automated today — stated plainly, gaps included:
   (`--markdown`), soonest due date first, and is compared against it in CI. Seven
   acceptances are live at 1.0.6; the nearest lapses 2027-03-01 (glib, blocker: gtk
   0.18 pins glib ^0.18 upstream).
-- Both jobs are blocking as of 2026-11-15, including the weekly full-backlog scan
+- Both jobs are blocking as of 2026-11-15, including the daily full-backlog scan
   (`fail-on-vuln: true`). That flip was made only after the backlog drained: the exact
   job invocation (`--config=osv-scanner.toml --recursive ./`) returns "No issues
   found" and exit 0 on the current tree. Because every accept-list row carries an

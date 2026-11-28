@@ -18,7 +18,8 @@ non-empty and CI fails.
 Dependabot runs concurrently with this: it edits uv.lock on its own branch, and
 this check makes the *paired* requirement-export edit mandatory on the same PR
 -- a dependabot PR that only touches uv.lock turns red, which is exactly the
-point (otherwise the counterfeited green described above happens every week).
+point (otherwise the counterfeited green described above happens on every
+Dependabot run).
 
 Usage:
     python scripts/check_lock_consistency.py [--root .]

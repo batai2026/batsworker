@@ -51,7 +51,7 @@ push to `main`.
 
 `suppression-register` sits in the same workflow but is guarded the other way —
 `if: github.event_name != 'schedule'` — so it does report on pull requests, and is
-therefore required. Its guard excludes only the weekly cron, where the full backlog
+therefore required. Its guard excludes only the scheduled cron, where the full backlog
 scan already evaluates the same file.
 
 `docker` and `Release` workflows trigger on `push` / tags only — nothing to

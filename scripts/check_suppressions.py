@@ -37,8 +37,8 @@ failure: the acceptance is still valid today, and blocking would red a push
 that changed nothing. Pass `--check-expiry [DAYS]` (default 30) to fail
 instead -- that is what the PR gate uses, so an acceptance that expires soon
 (or has already lapsed) turns the pull request red rather than waiting for the
-weekly full-backlog scan. osv-scanner itself makes a lapsed date reappear as a
-finding; this makes it visible on the PR instead of next Monday.
+next full-backlog scan. osv-scanner itself makes a lapsed date reappear as a
+finding; this makes it visible on the PR instead of at the next scheduled run.
 
 Usage:
     python scripts/check_suppressions.py [--root .] [--json]
@@ -116,7 +116,7 @@ LOCK_GLOBS: dict[str, tuple[str, ...]] = {
 }
 
 # Warn this many days before an acceptance lapses, so the rotation has room to
-# re-argue or upgrade rather than discovering it on a red Monday.
+# re-argue or upgrade rather than discovering it on a red scheduled run.
 EXPIRY_WARN_DAYS = 90
 
 
@@ -396,7 +396,7 @@ def render(reports: list[EntryReport], fail_window: int | None = None) -> str:
     # --check-expiry is set: the acceptance is still valid today, and blocking
     # here would red a push that changed nothing. The PR gate passes
     # --check-expiry so an acceptance running out of runway turns the PR red
-    # instead of waiting for the weekly full-backlog scan (which hard-fails on
+    # instead of waiting for the scheduled full-backlog scan (which hard-fails on
     # a lapsed date via osv-scanner itself).
     failing = [r for r in reports
                if r.days_left is not None
