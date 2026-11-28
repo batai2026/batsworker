@@ -61,7 +61,7 @@ here *and* in that file — both documents record the same set.
 | `rust` | `cargo clippy --all-targets -- -D warnings`, `cargo test --manifest-path stt/Cargo.toml` | Builds the SPA first; `-D warnings` means clippy lints fail the build |
 | `gate-stub` | `python -m coworker.eval.matrix --case evals/ci-case --stub --check-baseline` | Deterministic stub eval baseline; real-model matrix is manual (`workflow_dispatch`) |
 | `new-vulnerabilities / osv-scan` | `osv-scanner` against the PR's added vulns | Dependency delta — fails only on advisories the PR *adds*, not the accepted backlog |
-| `suppression-register` | `python scripts/check_suppressions.py --check-expiry 30` + register drift check | Dead/stale `osv-scanner.toml` exemptions, expiry within 30 days, and the expiry register matching config |
+| `suppression-register` | `python scripts/check_suppressions.py --check-expiry 30` + register drift + `python scripts/check_branch_protection.py --offline` | Dead/stale `osv-scanner.toml` exemptions, expiry within 30 days, the expiry register matching config, and `docs/branch-protection.md` matching what the workflows can actually report |
 
 The 13 job names above are exactly the *required check* names on `main`'s
 branch protection — including the matrix-expanded context strings
