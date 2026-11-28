@@ -91,7 +91,14 @@ ADVISORIES: dict[str, dict] = {
     # affected and there is nothing to fix. fixed_at stays None on purpose -- the
     # withdrawal is not a fix, and if picomatch ever gets a real advisory it will
     # have a new id and need a new row, not this one.
-    "ghsa-fc5q-39xc-vjpf": {"package": "picomatch", "ecosystem": "npm", "fixed_at": None},
+    #
+    # `withdrawn` is what actually carries that conclusion: with fixed_at None and
+    # picomatch still present in the npm lockfile, the checks below would call a
+    # re-added entry "alive" and pass. Verified counterfactually on 2026-11-28 --
+    # before this key existed, re-adding the entry exited 0.
+    "ghsa-fc5q-39xc-vjpf": {"package": "picomatch", "ecosystem": "npm",
+                            "fixed_at": None,
+                            "withdrawn": "2026-11-18T15:38:56Z"},
     "ghsa-m665-v7pm-7grj": {"package": "zip", "ecosystem": "crates.io", "fixed_at": "9.0.5"},
     "ghsa-q7v9-x93c-xqv3": {"package": "zip", "ecosystem": "crates.io", "fixed_at": "9.0.0"},
     "ghsa-8hxf-qr8p-62x4": {"package": "zip", "ecosystem": "crates.io", "fixed_at": "9.0.0"},
@@ -307,6 +314,25 @@ def audit(entries: list[dict], pins_by_eco: dict[str, list[Pinned]],
         pins = [p for p in pins_by_eco.get(ecosystem, []) if p.package == package]
         fixed = meta.get("fixed_at")
 
+        # A withdrawn advisory is not "unfixed", it is retracted: the CVE was
+        # judged not to be a security issue (picomatch, withdrawn
+        # 2026-11-18T15:38:56Z). osv-scanner drops the id and reports the entry
+        # as an unused ignore, but this check reads a static map, so without this
+        # branch it sees `fixed_at is None` plus the package still in the lockfile
+        # and calls the entry "alive" forever -- the register keeps advertising a
+        # risk GitHub retracted, and the suppression goes on swallowing any future
+        # finding for that package. Checked before the `fixed is None` case, which
+        # would otherwise classify every withdrawn advisory as alive.
+        if meta.get("withdrawn"):
+            reports.append(EntryReport(
+                vid, "withdrawn",
+                f"the advisory was withdrawn on {meta['withdrawn']} (not a "
+                "security issue), so there is nothing left to accept -- delete "
+                "the entry from osv-scanner.toml",
+                package=package, pins=pins, effective_until=until,
+                days_left=days, near_expiry=near, why_not_fixed=why))
+            continue
+
         if not pins:
             reports.append(EntryReport(
                 vid, "dead",
@@ -349,12 +375,14 @@ def audit(entries: list[dict], pins_by_eco: dict[str, list[Pinned]],
 def render(reports: list[EntryReport], fail_window: int | None = None) -> str:
     dead = [r for r in reports if r.status == "dead"]
     unmapped = [r for r in reports if r.status == "unmapped"]
+    withdrawn = [r for r in reports if r.status == "withdrawn"]
     alive = [r for r in reports if r.status == "alive"]
     near = [r for r in reports if r.near_expiry]
 
     lines = [
         f"{len(reports)} suppression(s): {len(alive)} alive, "
         f"{len(dead)} dead, {len(unmapped)} unmapped"
+        + (f", {len(withdrawn)} withdrawn" if withdrawn else "")
         + (f", {len(near)} expiring within {EXPIRY_WARN_DAYS} days" if near else ""),
         "",
     ]
@@ -365,14 +393,20 @@ def render(reports: list[EntryReport], fail_window: int | None = None) -> str:
     for report in unmapped:
         print(f"::error file=osv-scanner.toml,title={report.id} is unmapped"
               f"::{report.id}: {report.detail}")
+    for report in withdrawn:
+        print(f"::error file=osv-scanner.toml,title={report.id} was withdrawn"
+              f"::{report.id}: {report.detail}")
 
-    if dead or unmapped:
+    if dead or unmapped or withdrawn:
         lines.append("These entries must be removed (or mapped, if the id is real):")
         for report in dead:
             lines.append(f"  DEAD      {report.id}")
             lines.append(f"            {report.detail}")
         for report in unmapped:
             lines.append(f"  UNMAPPED  {report.id}")
+            lines.append(f"            {report.detail}")
+        for report in withdrawn:
+            lines.append(f"  WITHDRAWN {report.id}")
             lines.append(f"            {report.detail}")
         lines.append("")
     else:
@@ -434,8 +468,12 @@ def render_markdown(reports: list[EntryReport], today: dt.date) -> str:
     the daily stdout run, not in a committed file: a committed number is a number
     that is wrong by tomorrow.
     """
+    # Only live acceptances belong in the register. Selecting on `r.package` alone
+    # (the pre-2026-11-28 form) also pulled in dead and withdrawn rows that still
+    # name a package, which put a retracted advisory back on the page as if it
+    # were accepted debt -- the opposite of what this file is for.
     alive = sorted(
-        (r for r in reports if r.package),
+        (r for r in reports if r.status == "alive"),
         key=lambda r: (r.effective_until == "", r.effective_until),
     )
     lines = [
@@ -472,6 +510,16 @@ def render_markdown(reports: list[EntryReport], today: dt.date) -> str:
         "the build if an entry no longer maps to a package, or if the package is "
         "already pinned past the advisory's fixed version \u2014 both were true of 13 of "
         "the 20 entries removed on 2026-11-18.",
+        "",
+        "It also fails on a third thing an entry can outlive: the advisory itself. "
+        "`GHSA-fc5q-39xc-vjpf` (picomatch) was withdrawn by GitHub on "
+        "2026-11-18T15:38:56Z as \"not a security issue\", so there is no version "
+        "left to be affected by it. A suppression for a retracted advisory is not "
+        "harmless: it goes on swallowing any future finding for that package for "
+        "as long as the id stays in `osv-scanner.toml`. Such an entry is reported "
+        "as WITHDRAWN and fails the build. The first two modes catch evidence that "
+        "stopped existing (the package moved, or was never affected); this one "
+        "catches a conclusion that was overturned.",
         "",
     ]
     return "\n".join(lines)
@@ -556,7 +604,7 @@ def main(argv: list[str] | None = None) -> int:
     else:
         sys.stdout.write(render(reports, fail_window=args.check_expiry))
 
-    if any(r.status in ("dead", "unmapped") for r in reports):
+    if any(r.status in ("dead", "unmapped", "withdrawn") for r in reports):
         return 1
     if args.check_expiry is not None and any(
             r.days_left is not None and r.days_left <= args.check_expiry
