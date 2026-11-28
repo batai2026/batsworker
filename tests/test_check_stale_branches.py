@@ -50,6 +50,13 @@ def git(cwd: Path, *args: str) -> str:
     return proc.stdout.strip()
 
 
+def git_bytes(cwd: Path, *args: str, stdin: bytes = b"") -> subprocess.CompletedProcess:
+    """git with a binary stdin/stdout, for hashing files without a worktree."""
+    return subprocess.run(
+        ["git", *args], cwd=str(cwd), input=stdin, capture_output=True,
+    )
+
+
 def write(repo: Path, name: str, text: str) -> None:
     path = repo / name
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -58,6 +65,18 @@ def write(repo: Path, name: str, text: str) -> None:
 
 def commit(repo: Path, message: str) -> str:
     git(repo, "add", "-A")
+    git(repo, "commit", "-q", "-m", message)
+    return git(repo, "rev-parse", "HEAD")
+
+
+def commit_staged(repo: Path, message: str) -> str:
+    """Commit the index as-is.
+
+    ``commit()`` re-stages the worktree with ``git add -A``, which on a
+    ``core.fileMode=true`` host re-derives each mode from the filesystem and
+    silently discards an ``update-index --chmod`` decision. Any test that
+    depends on a mode must stage it and commit without touching the worktree.
+    """
     git(repo, "commit", "-q", "-m", message)
     return git(repo, "rev-parse", "HEAD")
 
@@ -289,23 +308,35 @@ def test_the_same_bytes_with_a_different_mode_are_not_the_same_change(repo: Path
     equal; the change is not. If the comparison looked at content alone this
     would read as landed and delete the branch -- losing the only record that
     the file was meant to be executable.
+
+    Both commits are built by writing the index directly and never touching the
+    worktree. Going through the filesystem cannot work portably: on a host with
+    ``core.fileMode=true`` (Linux, and CI) the worktree's own bits win and the
+    mode cannot be set from the test.
     """
-    script = "#!/bin/sh\necho hi\n"
+    script = b"#!/bin/sh\necho hi\n"
+    proc = git_bytes(repo, "hash-object", "-w", "--stdin", stdin=script)
+    assert proc.returncode == 0, proc.stderr
+    blob = proc.stdout.decode("ascii").strip()
+    # Switching branches with a dirty worktree fails on a fileMode host; the
+    # update-index --cacheinfo route needs the branch to exist first.
     git(repo, "checkout", "-q", "-b", "feat", "main")
-    write(repo, "run.sh", script)
-    git(repo, "add", "run.sh")
-    git(repo, "update-index", "--chmod=+x", "run.sh")
-    commit(repo, "add executable script")
-    git(repo, "checkout", "-q", "main")
+
+    git(repo, "update-index", "--add", "--cacheinfo",
+        f"100755,{blob},run.sh")
+    commit_staged(repo, "add executable script")
+    git(repo, "checkout", "-q", "-f", "main")
 
     # Same bytes, no exec bit, no squash commit.
-    write(repo, "run.sh", script)
-    git(repo, "add", "run.sh")
-    commit(repo, "recreate run.sh without the exec bit")
-    write(repo, "README.md", "main kept moving\n")
-    commit(repo, "later main work")
+    git(repo, "update-index", "--add", "--cacheinfo",
+        f"100644,{blob},run.sh")
+    commit_staged(repo, "recreate run.sh without the exec bit")
 
-    assert git(repo, "rev-parse", "main:run.sh") == git(repo, "rev-parse", "feat:run.sh")
+    # The premise, asserted rather than assumed: same blob, different mode.
+    assert git(repo, "ls-tree", "feat", "run.sh").split()[0] == "100755"
+    assert git(repo, "ls-tree", "main", "run.sh").split()[0] == "100644"
+    assert (git(repo, "rev-parse", "main:run.sh")
+            == git(repo, "rev-parse", "feat:run.sh"))
     base = git(repo, "merge-base", "main", "feat")
     assert "mode" in git(repo, "diff", base, "feat"), "the scan needs a mode line"
 
