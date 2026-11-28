@@ -72,7 +72,7 @@ New to the codebase? Read in roughly this order:
 
 | Doc | What it covers |
 |---|---|
-| [branch-protection.md](branch-protection.md) | What gates a merge on `main`: the 12 required checks, why push-only jobs are excluded, `strict` tradeoff, and how to change it safely |
+| [branch-protection.md](branch-protection.md) | What gates a merge on `main`: the 13 required checks, why push-only jobs are excluded, the `strict` tradeoff, and how to change it safely — checked against the remote by `scripts/check_branch_protection.py` |
 
 ## Related material elsewhere in the repo
 

@@ -177,6 +177,27 @@ jobs:
       - name: "Fail on suppressions the dependency graph has outgrown, or expiring soon"
         run: python scripts/check_suppressions.py --check-expiry 30
 
+      # The branch-protection document is the only description of the merge gate,
+      # and on 2026-11-18 it began describing a `strict: true` gate that the remote
+      # did not have. Nothing failed. This step is the something: it derives which
+      # checks can report on a pull request from the workflow YAML and fails when
+      # the document and the workflows disagree, in either direction.
+      #
+      # Needs PyYAML, so it installs the same locked dev set the other Python jobs
+      # use -- a floating `pip install pyyaml` would re-resolve on every run and is
+      # the pattern ci.yml explicitly rejects for mypy.
+      #
+      # Only the offline arm runs here. `--live` needs a token with admin scope to
+      # read protection back, which GITHUB_TOKEN in a read-only job does not have;
+      # it stays a deliberate local check (`check_branch_protection.py --live`).
+      - name: Install (for the branch-protection check)
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-dev.lock
+
+      - name: "The branch-protection doc must match what the workflows can report"
+        run: python scripts/check_branch_protection.py --offline
+
       - name: "The expiry register must match the config it describes"
         run: |
           python scripts/check_suppressions.py --markdown docs/dependency-risk-register.md
