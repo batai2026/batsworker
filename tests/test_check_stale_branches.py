@@ -397,7 +397,25 @@ def test_cli_strict_fails_on_an_undecided_branch(repo: Path) -> None:
 def test_cli_refuses_outside_a_repository(tmp_path: Path) -> None:
     result = run_cli("--repo", str(tmp_path))
     assert result.returncode == 2
-    assert "not inside a git repository" in result.stderr
+
+
+def test_cli_with_only_main_says_so_and_exits_clean(repo: Path) -> None:
+    """The real repository's normal state once cleanup is done.
+
+    Every other test leaves at least one other branch behind, so this arm --
+    no branches at all -- only ever ran against the live repo, where it printed
+    "no branches under refs/remotes/origin/", which reads like a failed ref
+    read rather than "already clean". Pin the wording and the exit code.
+    """
+    assert git(repo, "branch", "--format=%(refname:short)").split() == ["main"]
+
+    result = run_cli("--repo", str(repo), "--local")
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "refs/heads/" in result.stdout
+    # Nothing to do is a result, not a failure, and the message must say which.
+    assert "nothing to delete" in result.stdout.lower() or \
+        "no branch other than" in result.stdout.lower()
+    assert "no branches under" not in result.stdout.lower()
 
 
 def test_cli_remote_path_against_a_bare_remote(tmp_path: Path) -> None:
