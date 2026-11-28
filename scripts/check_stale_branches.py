@@ -309,7 +309,12 @@ def main(argv: list[str] | None = None) -> int:
 
     names = [b for b in repo.branches(ref_root) if f"{prefix}{b}" != main_ref]
     if not names:
-        print(f"no branches under {ref_root}")
+        # "No branches" is ambiguous: it reads equally like "the ref listing came
+        # back empty" and "there is nothing left to clean up". Only the second is
+        # true here -- the main ref was resolved just above -- so say that.
+        print(
+            f"no branch other than {main_ref} under {ref_root} -- nothing to delete"
+        )
         return 0
 
     verdicts = [
