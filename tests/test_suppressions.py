@@ -292,7 +292,8 @@ def test_check_expiry_fails_when_lapsing_within_window_default(tmp_path):
 
 def test_check_expiry_fails_when_already_lapsed(tmp_path):
     """A lapsed acceptance must fail the PR gate too (osv-scanner would surface
-    it as a finding; here it is caught at pull-request time, not next Monday)."""
+    it as a finding; here it is caught at pull-request time, not at the next
+    scheduled run)."""
     make_root(
         tmp_path,
         config=(

@@ -215,7 +215,7 @@ python scripts/check_suppressions.py --markdown docs/dependency-risk-register.md
 
 `docs/dependency-risk-register.md` is generated. A stale copy fails CI, so do not
 hand-edit it — an acceptance that lapses is meant to be seen coming, not
-discovered on a red Monday.
+discovered on a scheduled scan.
 
 Run the scan yourself before pushing a lockfile change:
 

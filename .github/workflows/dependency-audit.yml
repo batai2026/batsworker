@@ -35,7 +35,7 @@
 # published version). Neither is a thing the pushing author changed. So the push
 # gate now asks the only question an author can act on: did MY commit introduce
 # this? Advisory drift against unchanged code still blocks, but on the scheduled
-# run, once a week, for whoever is on audit duty -- not on a random docs commit.
+# run, off the PR path, for whoever is on audit duty -- not on a random docs commit.
 #
 #     What "drained" means here, measured rather than assumed. On the parent
 #     commit (rustix 1.1.4) the scan reports 21 rows across 13 packages; the
@@ -97,7 +97,19 @@ on:
   push:
     branches: [main, master]
   schedule:
-    - cron: "0 3 * * 1"   # Mondays 03:00 UTC
+    # Daily, 03:00 UTC. Was weekly (Mondays) until 2026-11-28. The reason to move
+    # it is already in this file: push stopped being a full scan on 2026-11-17, so
+    # advisory drift -- a record OSV re-publishes or newly marks reviewed, against
+    # code nobody touched -- is only ever caught by this trigger. At weekly cadence
+    # that drift had up to seven days to sit unnoticed, and the one run that found
+    # it was the only signal for the entire week. Daily cuts the ceiling to one day
+    # and asks nothing new of the person on audit duty: the job passes or fails on
+    # its own, and a lapsed acceptance still hard-fails here (fail-on-vuln: true)
+    # instead of waiting for the next Monday.
+    #
+    # GitHub Actions cron is UTC and does not follow DST; a few hours of drift is
+    # fine, the point is the ceiling, not the clock face.
+    - cron: "0 3 * * *"   # daily 03:00 UTC
   workflow_dispatch:
 
 permissions:
@@ -275,7 +287,9 @@ jobs:
         ./
       # Blocking, and this is the job that catches advisory drift: a finding
       # published against code nobody touched shows up here. It runs on a schedule
-      # precisely so that a red run arrives on audit day, not attached to whatever
-      # commit happened to be in flight. Every accepted entry is expiry-dated, so a
-      # stale acceptance turns this job red instead of rotting quietly.
+      # precisely so that a red run arrives on its own, daily, not attached to
+      # whatever commit happened to be in flight -- a passer-by committing docs is
+      # not the person who can act on a re-published advisory. Every accepted entry
+      # is expiry-dated, so a stale acceptance turns this job red instead of
+      # rotting quietly.
       fail-on-vuln: true
