@@ -299,6 +299,30 @@ script refuses rather than guesses when GitHub reports `mergeable_state=unknown`
 (mergeability is computed lazily — wait a few seconds and retry). Its tests are
 `tests/test_merge_pr_script.py`.
 
+## Deleting merged branches
+
+The repository does not delete branches on merge, so they accumulate. Before
+deleting one, ask: can this be removed without losing work?
+
+```shell
+python scripts/check_stale_branches.py --fetch          # report only
+python scripts/check_stale_branches.py --fetch --delete # act on DELETE lines
+```
+
+Do not answer that with `git branch --merged` or with
+`git diff <branch> main --numstat`. The first never lists a squash-merged
+branch — squash rewrites the commit, so the tip is not an ancestor, forever.
+The second shows main's later work as deletions and reads like the branch held
+something unique. The script compares content instead: relative to the
+merge-base, does a commit on `main` reproduce the branch's change?
+
+Anything it cannot decide is reported `KEEP`, not deleted — an over-wide scan
+range, unrelated history, or work that was re-implemented by hand across
+several commits. `--strict` turns an undecided branch into a non-zero exit for
+scripted use. Its tests are `tests/test_check_stale_branches.py`, which build
+real throwaway repositories; the squash case and the misleading-diff case each
+have a named test.
+
 ## Questions
 
 Open an issue. For anything security-related, [SECURITY.md](SECURITY.md) first.
