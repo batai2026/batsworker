@@ -162,12 +162,15 @@ reason = "zvariant_derive 5.12.0 is unmaintained. Proc-macro sibling of zvariant
 # GHSA-fc5q-39xc-vjpf" while `--config` filtered nothing.
 #
 # Do not re-add it on the strength of the advisory text alone -- check
-# `withdrawn` first (api.osv.dev/v1/vulns/<id>). Note that
-# scripts/check_suppressions.py cannot see a withdrawal at all: it judges from
-# ADVISORIES plus the lockfile, and picomatch 4.0.7 is still pinned with
-# fixed_at=None, so it keeps calling a withdrawn entry "alive". That blind spot
-# is why this had to be found by reading the scanner's own "unused ignores"
-# warning rather than by the checker.
+# `withdrawn` first (api.osv.dev/v1/vulns/<id>). That blind spot is why this had
+# to be found by reading the scanner's own "unused ignores" warning rather than
+# by the checker: until 2026-11-28 scripts/check_suppressions.py judged an entry
+# from ADVISORIES plus the lockfile, and picomatch 4.0.7 is still pinned with
+# fixed_at=None, so it called a re-added withdrawn entry "alive" and exited 0.
+# It now carries a `withdrawn` key on that ADVISORIES row and reports WITHDRAWN
+# (exit 1) -- verified counterfactually against the pre-fix script, which exits 0
+# on the same config. Anything else this comment says about a blind spot is
+# historical, not current.
 #
 # The two picomatch advisories still live at the time of writing
 # (GHSA-3v7f-55p6-f55p, GHSA-c2c7-rcm5-vvqj) are both patched at 4.0.4 and the

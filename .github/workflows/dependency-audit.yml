@@ -71,6 +71,16 @@
 #     row dated in the past makes its finding reappear and the scan exit 1, so a
 #     lapsed acceptance turns this job red rather than rotting quietly.
 #
+#     Postscript on picomatch (2026-11-21): GitHub withdrew GHSA-fc5q-39xc-vjpf
+#     on 2026-11-18T15:38:56Z as "not a security issue". The dated acceptance was
+#     deleted rather than extended, and osv-scanner.toml now carries that history
+#     as a comment. Why this is worth knowing: the delta-vs-full split above was
+#     argued from that advisory, and it turned out the advisory itself was wrong.
+#     The split still holds -- an advisory database can gain *and lose* rows with
+#     no dependency change, which is exactly the drift an author cannot act on --
+#     but anyone re-reading this as "picomatch is a known risk" is reading a
+#     retracted finding.
+#
 # Note on rustix/xattr pairing, for whoever bumps these next: rustix 1.1.6 changed
 # what a zero-length xattr buffer means -- it used to ask the OS for the size, now
 # it returns nothing and the size comes from the new *_query functions. xattr
